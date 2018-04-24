@@ -22,31 +22,79 @@ def recengine(engine,P,a,n,opdist):
 	# %13: CF , TF-IDF before correlation, non-discounted argmax afterward
 	# %P=User-Item purchase mx; a=active user num; n=num nearest neighbors
 
-	if engine==1:
+
+	if engine=="CF": # standard cosine
+		# Build row vector s := cosine(a, all users)
+		# If a's sales are all 0, similarities are all 0
+    	# If another user's sales are all 0, similarity to a is 0
+		
 		norms = np.sqrt(np.sum(np.power(P,2),axis=1))
 		norma = norms[a]
 		sel = np.where(norms==0)[0]
 		norms[sel] = 1
+		k = np.power(np.diag(norms),-1)
+		kinf = np.where(np.isinf(k))
+		k[kinf] = 0
+		if norma>0: norms = k*(1.0/norma)
+		else: norms = k
+		s = np.matmul(norms,np.matmul(P,P[a,:]))
+		s[a] = 0 # self-similarity set to 0
+		if np.sum(s) == 0: # if no one similar, suggest most popular product
+			Recommendation = np.argmax(np.sum(P,axis=0))
+		else:
+			topN = np.argsort(s)[::-1][:n] # top N users
+			# Recommend the most common item among those n users
+			SubP = P[topN,:]
+			Recommendation = np.argsort(np.sum(SubP,axis=0))[::-1][0]
 
-	if engine==5:		# lowest seller
+	if engine=="CFnorm": #CF with discounted argmax i.e. normalized by the sum of the product sales
+		norms = np.sqrt(np.sum(np.power(P,2),axis=1))
+		norma = norms[a]
+		sel = np.where(norms==0)[0]
+		norms[sel] = 1
+		k = np.power(np.diag(norms),-1)
+		kinf = np.where(np.isinf(k))
+		k[kinf] = 0
+		if norma>0: norms = k*(1.0/norma)
+		else: norms = k
+		s = np.matmul(norms,np.matmul(P,P[a,:]))
+		s[a] = 0 # self-similarity set to 0
+		if np.sum(s) == 0: # if no one similar, suggest most popular product
+			Recommendation = np.argmax(np.sum(P,axis=0))
+		else:
+			topN = np.argsort(s)[::-1][:n] # top N users
+			# Recommend the most common item among those n users
+			SubP = P[topN,:]
+
+			allSales = np.sum(P,axis=0)
+			allSales[np.where(allSales==0)[0]]=1 # diving by one won't change results
+			Recommendation = np.argsort(np.sum(SubP,axis=0)/allSales)[::-1][0]
+
+		
+	if engine=="min":		# lowest seller
 		sales = np.sum(P, axis=0)
 		Recommendation = np.argmin(sales)
 
-	if engine==6:
+	if engine=="median":		# median seller
 		sales = np.sum(P, axis=0)
 		v = np.argsort(sales).tolist()
 		Recommendation = v[int(len(v)/2)]
 
-	if engine==7:		# highest seller
+	if engine=="max":		# highest seller
 		sales = np.sum(P, axis=0)
 		Recommendation = np.argmax(sales)
+
+	if engine=="top5":		# Top-5 sellers
+		sales = np.sum(P, axis=0)
+		Recommendation = np.argsort(sales)[::-1][:5]
 		
-	if engine==9:		# random
+	if engine=="random":		# random
 		Recommendation = int(random.random()*P.shape[1])
 
 	return Recommendation
 
 
+# Gini coefficient computation
 def gini(x):
 	x = np.sort(x)
 	n = x.shape[0]
@@ -59,6 +107,8 @@ def gini(x):
 	G = absdif/(2*np.power(n,2)*xbar) * (n/(n)) # change to n/(n-1) for unbiased
 	return G
 
+
+# Probabilistic function that selects a product for a user
 def LogitChoiceByHand(Distances, SimMetric, k, Spec, Delta, Rec, smoothhist, varBeta, w):
 
 	if Spec==1: Distances[Rec] = Distances[Rec]*Delta
@@ -89,6 +139,7 @@ def LogitChoiceByHand(Distances, SimMetric, k, Spec, Delta, Rec, smoothhist, var
 	return i # index of chosen item
 
 
+# Create initial awareness matrix
 def makeawaremx(awaremech,theta,Products,Dij,A,I,Lambda=0.75):
 	awaremech==3   # not used currently
 	Do = spatial.distance.cdist([[0,0]], Products)[0] 	# distance of products from the origin
@@ -98,21 +149,24 @@ def makeawaremx(awaremech,theta,Products,Dij,A,I,Lambda=0.75):
 			W[a,i] = Lambda*np.exp(-(np.power(Do[i],2))/(theta/1)) + (1-Lambda)*np.exp(-(np.power(Dij[a,i],2))/(theta/3))
 			W[a,i] = random.random()<W[a,i] # probabilistic
 	return W
-	              
+	    
 
-def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,i,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda):
-	if opdist<=0: # if not outer product
-		P = np.zeros([A,I]) 	 # Purchases
-		H = np.zeros([A,I]) 	 # Histories
-		Pt = np.ones([I, iters1]) # For visualization
-	else:
+# Main function
+def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda):
+	if opdist<=0: 	# if not outer product
+		P = np.zeros([A,I]) 	 # Purchases, sales history
+		H = np.zeros([A,I]) 	 # Loyalty histories
+		Data = {"Control":{"Product Sales Time Series": np.ones([I, iters1]), "Sales History": P.copy(),"All Purchased Products":[]}}
+		Data.update({"Recommender": {"Product Sales Time Series": np.ones([I, iters2]), "Sales History": P.copy(),"All Purchased Products":[]}}) 	# copy the same structure for recommender
+	else:			# currently no outer product is implementeed
 		P = np.zeros([A,I + 1]) # Purchases
 		H = np.zeros([A,I + 1]) # Histories
 
+
 	# Create distance matrix
 	D = np.zeros([A,I])
-	D = spatial.distance.cdist(IdealPoints, Products)
-	Do = spatial.distance.cdist([[0,0]], Products)[0] 	# distance of points from origin
+	D = spatial.distance.cdist(IdealPoints, Products)	# distance of products from users
+	Do = spatial.distance.cdist([[0,0]], Products)[0] 	# distance of products from origin
 
 
 	# Make binary awareness matrix 
@@ -120,77 +174,93 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 
 
 	# Control period : recommendations off
-	Ptemp = P.copy()
-	selectedItems = []
+	print("Control period...")
 	for t in range(iters1):
-		if t==0:
-			#Pt[indexOfChosenItem,t] = 1
-			nothing = False
-		else:
-			Pt[:,t] = Pt[:,t-1]
+		if t>0: Data["Control"]["Product Sales Time Series"][:,t] = Data["Control"]["Product Sales Time Series"][:,t-1]
 		for a in range(A):
 			indexOfChosenItem = LogitChoiceByHand(D[a,:], metric, k, 0, delta, 1, H[a,:], varBeta, W[a,:])
-			
-			Ptemp[a,indexOfChosenItem]+=1				# add to sales history
-			selectedItems.append(indexOfChosenItem)
-			H[a,:] = varAlpha*H[a,:]
-			H[a,indexOfChosenItem] +=(1-varAlpha)	# update loyalty smooths
-			
-			Pt[indexOfChosenItem,t] +=1
+			H[a,:] = varAlpha*H[a,:]												# update loyalty smooths
+			H[a,indexOfChosenItem] +=(1-varAlpha)									# update loyalty smooths
+			Data["Control"]["Product Sales Time Series"][indexOfChosenItem,t] +=1	# add product sale
+			Data["Control"]["Sales History"][a,indexOfChosenItem]+=1				# add to sales history, the P matrix in the original code
+			Data["Control"]["All Purchased Products"].append(indexOfChosenItem)		# add product sale
 	
+
+	# Treament periof : recommendations on
+	print("Using the purchase history of the control period...")
+	Data["Recommender"]["Sales History"] = Data["Control"]["Sales History"].copy()
+	Data["Recommender"]["Product Sales Time Series"][:,0] = Data["Control"]["Product Sales Time Series"][:,-1] # continue from the control history
+	for t in range(iters2):
+		if t>0: Data["Recommender"]["Product Sales Time Series"][:,t] = Data["Recommender"]["Product Sales Time Series"][:,t-1]
+		for a in range(A):
+			Rec = recengine(engine,Data["Recommender"]["Sales History"],a,n,opdist) 	# recommends one item only
+			W[a,Rec] = 1 																# Rec forces permanent awareness !!!!
+			indexOfChosenItem = LogitChoiceByHand(D[a,:], metric, k, spec, delta, Rec, H[a,:], varBeta, W[a,:])
+			H[a,:] = varAlpha*H[a,:]													# update loyalty smooths
+			H[a,indexOfChosenItem] +=(1-varAlpha)										# update loyalty smooths
+			Data["Recommender"]["Product Sales Time Series"][indexOfChosenItem,t] +=1	# add product sale
+			Data["Recommender"]["Sales History"][a,indexOfChosenItem]+=1				# add to sales history, the P matrix in the original code
+			Data["Recommender"]["All Purchased Products"].append(indexOfChosenItem)		# add product sale
+	
+	# since the recommendation period started with the purchase data of the control period do the following
+	Data["Recommender"]["Sales History"] = Data["Recommender"]["Sales History"] - Data["Control"]["Sales History"]
+
+
 	# Calculate Gini
-	G = gini(np.sum(Ptemp,axis=0))
-	print("Gini (control period):",G)
-
-	# # Treament periof : recommendations on
-	# Ptemp2 = Ptemp.copy() # either empty purchase list
-	# # Ptemp2 = P[:]			 # or get the history from the control period
-	# for t in range(iters2):
-	# 	for a in range(A):
-	# 		Rec = recengine(engine,Ptemp2,a,n,opdist) 	# recommends one item only
-	# 		W[a,Rec] = 1 	# Rec forces permanent awareness !!!!
-	# 		indexOfChosenItem = LogitChoiceByHand(D[a,:], metric, k, spec, delta, Rec, H[a,:], varBeta, W[a,:])
-	# 		Ptemp2[a,indexOfChosenItem]+=1				# add to sales history
-	# 		H[a,:] = varAlpha*H[a,:]
-	# 		H[a,indexOfChosenItem] +=(1-varAlpha)	# update loyalty smooths
-
-	# 		Pt[indexOfChosenItem,t+iters1] = Pt[indexOfChosenItem,t-1+iters1]+1
-	
-	# # since the recommendation period started with the purchase data of the control period do the following
-	# Ptemp2 = Ptemp2 - Ptemp
-
-	# G = gini(np.sum(Ptemp2,axis=0))
-	# print("Gini (recommender period):",G)
+	G1 = gini(np.sum(Data["Control"]["Sales History"],axis=0))
+	G2 = gini(np.sum(Data["Recommender"]["Sales History"],axis=0))
+	print("Gini (control period):",G1, " (Recommender period):", G2)
 
 
-
-
+	# Some plotting for visual inspection
 	if plots:
-		# product purchase accumulation. Central products are red, niche products are green. An ideal scenario will promote both
-		colors = [ (1 - d/max(Do),  d/max(Do), 0,1 ) for d in Do]
-		for i in range(Pt.shape[1]): Pt[:,i] = Pt[:, i]/np.sum(Pt[:, i])
-		ind = np.argsort(Do)
-		plt.stackplot(range(Pt.shape[1]),Pt, colors = colors)
+		sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
+		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+
+		f, ax = plt.subplots(2, sharex=False, figsize=(12,8))
+		for p, period in enumerate(["Control","Recommender"]):
+			# product purchase accumulation. Central products are red, niche products are green. An ideal scenario will promote both
+			colors = [ ( 1,  0 , 0, 1-d ) if d<1 else (0, 1, 0 , d/max(Do)) for d in Do]
+			for i in range(Data[period]["Product Sales Time Series"].shape[1]): Data[period]["Product Sales Time Series"][:,i] = Data[period]["Product Sales Time Series"][:, i]/np.sum(Data[period]["Product Sales Time Series"][:, i])
+			ax[p].stackplot(range(Data[period]["Product Sales Time Series"].shape[1]),Data[period]["Product Sales Time Series"])
+			ax[p].set_ylim([0,1])
+			if p==0: ax[p].set_xlim([0,iters1])
+			if p==1: ax[p].set_xlim([0,iters2])
 		plt.show()
-
-
-		# 2d visualization of products and users. Yellow circles show the overall amount of purchases in the end of the iterations
-		n, bins, patches = plt.hist(selectedItems, bins=range(I+1),  facecolor='g', alpha=0.75)
 		plt.close()
-		ax = plt.gca()
-		ax.scatter(IdealPoints[:,0], IdealPoints[:,1], marker='^', c='b',s=50)
-		ax.scatter(Products[:,0], Products[:,1], marker='o', c='r',s=50)
-		for i in range(I): plt.scatter(Products[i,0], Products[i,1], marker='o', c='y',s=400*(n[i]/np.max(n)),alpha=0.8)
-		circle1 = plt.Circle((0, 0), 1, color='r',fill=False)
-		ax.add_artist(circle1)
+
+		f, ax = plt.subplots(2, sharex=False, figsize=(4,8))
+		for p, period in enumerate(["Control","Recommender"]):
+			# 2d visualization of products and users. Yellow circles show the overall amount of purchases in the end of the iterations
+			n, bins = np.histogram(Data[period]["All Purchased Products"], bins=range(I+1))
+			# ax[p] = plt.gca()
+			ax[p].scatter(IdealPoints[:,0], IdealPoints[:,1], marker='^', c='b',s=70,alpha=0.6)
+			#ax[p].scatter(Products[:,0], Products[:,1], marker='o', c='r',s=50)
+			for i in range(I): ax[p].scatter(Products[i,0], Products[i,1], marker='o', c=(1,0,0,n[i]/np.max(n)),edgecolor='k',s=70)
+			circle1 = plt.Circle((0, 0), 1, color='r',fill=False)
+			ax[p].add_artist(circle1)
 		plt.show()
+
+		# Seaborn kde plots for the products only
+		for p, period in enumerate(["Control","Recommender"]):
+			n, bins = np.histogram(Data[period]["All Purchased Products"], bins=range(I+1))
+			x=[]
+			y=[]
+			for i in range(I): 
+				x.append(Products[i,0])
+				y.append(Products[i,1])
+				for g in range(int(n[i]/10)):
+					x.append(Products[i,0]+random.random()/10.-0.05)
+					y.append(Products[i,1]+random.random()/10.-0.05)
+			sns.jointplot(x=np.array(x), y=np.array(y),linewidth=0.5,s=20, edgecolor="w",xlim=[-2,2],ylim=[-2,2]).plot_joint(sns.kdeplot, zorder=0, n_levels=10)
+			plt.show()
+		
 
 
 ## INPUTS
-A = 50                         #Agents, users
-I = 100                           #Items, products
-dim = 2                          #Dimension of map
-engine = 5                       #1=CF, 2=Inverse CF, 3=TFIDF-CF, 4=Lowest seller, 5=Median seller, 6=Highest seller, 7=Random, 8=TFIDF + Inv Weight
+A = 50                         	# Agents, users
+I = 50                         # Items, products
+engine = "random"                      
 n = 5                            #Top-n similar used in collaborative filter
 
 ## Choice model
@@ -230,4 +300,4 @@ Products = np.array([ [np.random.normal(), np.random.normal()] for i in range(I)
 
 
 
-sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,i,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda);
+sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda);
