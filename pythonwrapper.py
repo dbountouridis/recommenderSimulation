@@ -103,17 +103,17 @@ def LogitChoiceByHand(Distances, SimMetric, k, Spec, Delta, Rec, smoothhist, var
 
 	if Spec==1: Distances[Rec] = Distances[Rec]*Delta
 
-	#Convert distance to similarity based on metric
+	# Convert distance to similarity based on metric
 	if SimMetric == 1: Similarity = - Distances
 	if SimMetric == 2: Similarity = - k*np.log(Distances)
 	if SimMetric == 3: Similarity = np.power(Distances,-k)
 
-	#Calc deterministic utility (based on utility spec desired)
+	# Calc deterministic utility (based on utility spec desired)
 	#spec: 0 = f(d), 1 = f(Delta*d), 2 = delta*f(d), 3 = f(d) + Delta
 	V = 1*Similarity + varBeta*smoothhist
 
-	#If spec==0, f(d)      +...  don't do anything: rec's off and no salience
-	#If spec==1, f(Delta*d)+...  don't do anything: already multiplied above
+	# If spec==0, f(d)      +...  don't do anything: rec's off and no salience
+	# If spec==1, f(Delta*d)+...  don't do anything: already multiplied above
 	if Spec==2:  
 		V[Rec] = Delta*1*Similarity[Rec] + varBeta*smoothhist[Rec]
 	if Spec==3:
@@ -142,7 +142,7 @@ def makeawaremx(awaremech,theta,Products,Dij,A,I,Lambda=0.75):
 	    
 
 # Main simulation function
-def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timer):
+def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timer, percentageOfActiveUsers, percentageOfActiveItems):
 	if opdist<=0: 	# if not outer product
 		P = np.zeros([A,I]) 	 # Purchases, sales history
 		H = np.zeros([A,I]) 	 # Loyalty histories
@@ -178,8 +178,19 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 	print("Control period...")
 	for t in range(iters1):
 		if t>0: Data["Control"]["Product Sales Time Series"][:,t] = Data["Control"]["Product Sales Time Series"][:,t-1]
-		for a in range(A):
-			indexOfChosenItem = LogitChoiceByHand(D[a,:], metric, k, 0, delta, 1, H[a,:], varBeta, W[a,:])
+
+		# update user activity: which ones get online
+		activeUserIndeces = np.arange(A).tolist()
+		random.shuffle(activeUserIndeces)
+		activeUserIndeces = activeUserIndeces[:int(len(activeUserIndeces)*percentageOfActiveUsers)] 
+
+		# update products activity: which ones get online
+		activeItemIndeces = np.arange(I).tolist()
+		random.shuffle(activeItemIndeces)
+		activeItemIndeces = np.sort(activeItemIndeces[:int(len(activeItemIndeces)*percentageOfActiveItems)]).tolist()
+
+		for a in activeUserIndeces:
+			indexOfChosenItem = activeItemIndeces[ LogitChoiceByHand(D[a,activeItemIndeces], metric, k, 0, delta, 1, H[a,activeItemIndeces], varBeta, W[a,activeItemIndeces]) ]
 			H[a,:] = varAlpha*H[a,:]												# update loyalty smooths
 			H[a,indexOfChosenItem] +=(1-varAlpha)									# update loyalty smooths
 			Data["Control"]["Product Sales Time Series"][indexOfChosenItem,t] +=1	# add product sale
@@ -187,8 +198,7 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 			Data["Control"]["All Purchased Products"].append(indexOfChosenItem)		# add product sale
 	
 	
-
-	# Treament periof : recommendations on
+	# Treament period : recommendations on
 	for eng in engine:
 		# continue from the control history
 		Data[eng]["Sales History"] = Data["Control"]["Sales History"].copy()
@@ -202,11 +212,25 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 		print("Recommender ",eng," period...")
 		for t in range(iters2):
 			if t>0: Data[eng]["Product Sales Time Series"][:,t] = Data[eng]["Product Sales Time Series"][:,t-1]
-			for a in range(A):
-				Rec = recengine(eng,Data[eng]["Sales History"],a,n,opdist) 	# recommends one item only
-				W_[a,Rec] = 1																# Rec forces permanent awareness in the original implementaiotn
-				T_[a,Rec] = timeValue 														# We minimize that effect with a timer														
-				indexOfChosenItem = LogitChoiceByHand(D[a,:], metric, k, spec, delta, Rec, H_[a,:], varBeta, W_[a,:])
+
+			# update user activity: random users that are online
+			activeUserIndeces = np.arange(A).tolist()
+			random.shuffle(activeUserIndeces)
+			activeUserIndeces = activeUserIndeces[:int(len(activeUserIndeces)*percentageOfActiveUsers)] 
+
+			# update products activity: random products that are available
+			activeItemIndeces = np.arange(I).tolist()
+			random.shuffle(activeItemIndeces)
+			activeItemIndeces = np.sort(activeItemIndeces[:int(len(activeItemIndeces)*percentageOfActiveItems)]).tolist()
+			nonActiveItemIndeces = [ i  for i in np.arange(I) if i not in activeItemIndeces]
+			W__ = W_.copy()
+			W__[:,nonActiveItemIndeces] = 0  # make the awareness 0, therefore unavailable
+
+			for a in activeUserIndeces:
+				Rec = activeItemIndeces[recengine(eng,Data[eng]["Sales History"][:,activeItemIndeces],a,n,opdist)] 	# recommendation
+				W__[a,Rec] = 1																# Rec forces permanent awareness in the original implementation
+				T_[a,Rec] = timeValue 														# We minimize that effect with a timer													
+				indexOfChosenItem =  LogitChoiceByHand(D[a,:], metric, k, spec, delta, Rec, H_[a,:], varBeta, W__[a,:])
 				H_[a,:] = varAlpha*H_[a,:]													# update loyalty smooths
 				H_[a,indexOfChosenItem] +=(1-varAlpha)										# update loyalty smooths
 				Data[eng]["Product Sales Time Series"][indexOfChosenItem,t] +=1	# add product sale
@@ -218,12 +242,10 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 			T_[indecesOfInitialAwareness] = timeValue # make sure the initial awareness does not fade
 			T_[T_<0] = 0 # make sure there are not negative values
 			W_[T==0] = 0 
-
 		
 		# since the recommendation period started with the purchase data of the control period do the following
 		Data[eng]["Sales History"] = Data[eng]["Sales History"] - Data["Control"]["Sales History"]
-
-
+		
 		# Calculate Gini
 		G1 = gini(np.sum(Data["Control"]["Sales History"],axis=0))
 		G2 = gini(np.sum(Data[eng]["Sales History"],axis=0))
@@ -237,18 +259,19 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 		sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 
-		# f, ax = plt.subplots(1+len(engine), sharex=False, figsize=(12,8))
-		# for p, period in enumerate(["Control"]+engine):
-		# 	# product purchase accumulation. Central products are red, niche products are green. An ideal scenario will promote both
-		# 	colors = [ ( 1,  0 , 0, 1-d ) if d<1 else (0, 1, 0 , d/max(Do)) for d in Do]
-		# 	for i in range(Data[period]["Product Sales Time Series"].shape[1]): Data[period]["Product Sales Time Series"][:,i] = Data[period]["Product Sales Time Series"][:, i]/np.sum(Data[period]["Product Sales Time Series"][:, i])
-		# 	ax[p].stackplot(range(Data[period]["Product Sales Time Series"].shape[1]),Data[period]["Product Sales Time Series"],colors = colors)
-		# 	ax[p].set_ylim([0,1])
-		# 	if p==0: ax[p].set_xlim([0,iters1])
-		# 	else: ax[p].set_xlim([0,iters2])
-		# 	ax[p].set_ylabel(period)
-		# plt.show()
-		# plt.close()
+		f, ax = plt.subplots(1+len(engine), sharex=False, figsize=(12,8))
+		for p, period in enumerate(["Control"]+engine):
+			# product purchase accumulation. Central products are red, niche products are green. An ideal scenario will promote both
+			colors = [ ( 1,  0 , 0, 1-d ) if d<1 else (0, 1, 0 , d/max(Do)) for d in Do]
+			for i in range(Data[period]["Product Sales Time Series"].shape[1]): 
+				Data[period]["Product Sales Time Series"][:,i] = Data[period]["Product Sales Time Series"][:, i]/np.sum(Data[period]["Product Sales Time Series"][:, i])
+			ax[p].stackplot(range(Data[period]["Product Sales Time Series"].shape[1]),Data[period]["Product Sales Time Series"])#,colors = colors)
+			ax[p].set_ylim([0,1])
+			if p==0: ax[p].set_xlim([0,iters1])
+			else: ax[p].set_xlim([0,iters2])
+			ax[p].set_ylabel(period)
+		plt.show()
+		plt.close()
 
 
 		f, ax = plt.subplots(1,1+len(engine), figsize=(15,6), sharey=True)
@@ -256,7 +279,12 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 			# 2d visualization of products and users. Yellow circles show the overall amount of purchases in the end of the iterations
 			n, bins = np.histogram(Data[period]["All Purchased Products"], bins=range(I+1))
 			ax[p].scatter(IdealPoints[:,0], IdealPoints[:,1], marker='.', c='b',s=40,alpha=0.6)
-			for i in range(I): ax[p].scatter(Products[i,0], Products[i,1], marker='o', c=(1,0,0,n[i]/np.max(n)),edgecolor='k',s=40)
+			for i in range(I): 
+				if n[i]>=1:
+					v = 0.3+ n[i]/np.sum(n)*0.7
+				else:
+					v = 0
+				ax[p].scatter(Products[i,0], Products[i,1], marker='o', c=(1,0,0,v),edgecolor='k',s=40)
 			circle1 = plt.Circle((0, 0), 1, color='r',fill=False)
 			ax[p].add_artist(circle1)
 			ax[p].set_xlabel(period)
@@ -288,7 +316,7 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metr
 # Inputs
 A = 50                         	# Agents, users
 I = 100                          # Items, products
-engine = ["CF","top5","random","median","min"]                      
+engine = ["CF","random","median"]                      
 n = 5                           #Top-n similar used in collaborative filter
 
 # Choice model
@@ -321,17 +349,19 @@ plots = 0                       #1=produce all plots, 0=plots off
 
 # Added functionalities
 timeValue = 5 	# number of iterations until the awareness fades away, set very high e.g. >iters2 for no effect
+percentageOfActiveUsers = 1  	# percentage of active users per iteration, set 1 to agree with paper
+percentageOfActiveItems = 1 	# percentage of active items per iteration, set 1 to agree with paper
 
 D = [] # hold the G2-G1 values
 for i in range(10):
 	print("Run:",i)
 	
 	# Generate products and users/customers
-	IdealPoints = np.array([ [np.random.normal(), np.random.normal()] for i in range(A)])
+	IdealPoints = np.array([ [np.random.normal()/2-0.5, np.random.normal()/2-0.5] for i in range(A)])
 	Products = np.array([ [np.random.normal(), np.random.normal()] for i in range(I)])
 
 	# Run simulation
-	Ginis = sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue)
+	Ginis = sim2fcntimeseries(A,I,iters1,iters2,n,delta,IdealPoints,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue,percentageOfActiveUsers, percentageOfActiveItems)
 	D.append(Ginis)	
 
 df = pd.DataFrame(D, columns = [i for i in engine])
