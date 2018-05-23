@@ -144,7 +144,7 @@ def makeawaremx(awaremech,theta,Products,Dij,A,I,Lambda=0.75):
 	 
 
 # Plotting analytics	    
-def plotAnalysis(Data,varBeta):
+def plotAnalysis(Data,varBeta, Products, Users):
 	sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 
@@ -182,11 +182,11 @@ def plotAnalysis(Data,varBeta):
 		for i in range(I): 
 			if n[i]>=1:
 				v = 0.6# 0.4+ n[i]/np.max(n)*0.4
-				c = (0.2,0.2,0.2,v)
+				c = (1,0,0.0,v)
 				s = 2+n[i]/np.max(n)*40
 				marker='o'
 			else:
-				c = (1,0,0,1)
+				c = (0,0,0,0.8)
 				s = 10
 				marker='x'
 			ax[p].scatter(Products[i,0], Products[i,1], marker=marker, c=c,s=s)		
@@ -222,7 +222,7 @@ def plotAnalysis(Data,varBeta):
 
 
 # Main simulation function
-def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timer, percentageOfActiveUsers, percentageOfActiveItems, added):
+def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timer, percentageOfActiveUsers, percentageOfActiveItems, added, moveAsDistancePercentage):
 	
 	# Initialize stuctures
 	if opdist<=0: 	# if not outer product
@@ -310,11 +310,13 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,p
 					Data[eng]["Users"][a] = [x,y]
 
 			if added: # if added is True do the following
-				# Adjust awareness based on timer
-				Data[eng]['T'] = Data[eng]['T']-1
-				#Data[eng]['T'][indecesOfInitialAwareness] = timeValue # make sure the initial awareness does not fade
-				Data[eng]['T'][Data[eng]['T']<0] = 0 # make sure there are not negative values
-				Data[eng]['Awareness'][T==0] = 0 
+				# # Adjust awareness based on timer
+				# Data[eng]['T'] = Data[eng]['T']-1
+				# #Data[eng]['T'][indecesOfInitialAwareness] = timeValue # make sure the initial awareness does not fade
+				# Data[eng]['T'][Data[eng]['T']<0] = 0 # make sure there are not negative values
+				# Data[eng]['Awareness'][T==0] = 0 
+				# Data[eng]['Awareness'][T!=0] = 1 
+				#print("b:",np.sum(Data[eng]['Awareness'].flatten()))
 
 				# update distances and awereness based on new positions
 				Data[eng]["D"] = spatial.distance.cdist(Data[eng]["Users"], Products)	# distance of products from users
@@ -322,9 +324,10 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,p
 				indeces = newAwareness==1
 				Data[eng]['T'][indeces] = timeValue
 
-				Data[eng]['Awareness']+=newAwareness
+				Data[eng]['Awareness']=newAwareness
 				indeces = Data[eng]['Awareness']>1
 				Data[eng]["Awareness"][indeces]=1
+				#print("a:",np.sum(Data[eng]['Awareness'].flatten()))
 	
 		
 		# Gini computation
@@ -339,19 +342,19 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,p
 			print("Gini (control period):",G1, " (Recommender period):", G2)
 
 	#export
-	pickle.dump( (Data,varBeta), open( "temp/run-output.p", "wb" ) )
-	(Data,varBeta) = pickle.load( open( "temp/run-output.p", "rb" ) )
+	pickle.dump( (Data,varBeta, Products, Users), open( "temp/run-output.p", "wb" ) )
+	(Data,varBeta, Products, Users) = pickle.load( open( "temp/run-output.p", "rb" ) )
 
 	# Some plotting for visual inspection
-	if plots: plotAnalysis(Data,varBeta)
+	if plots: plotAnalysis(Data,varBeta, Products, Users)
 		
 	return Ginis
 		
 
 
 # Inputs
-A = 50                         # Agents, users
-I = 60                         # Items, products
+A = 60                         # Agents, users
+I = 80                         # Items, products
 engine = ["CF","CFnorm","min","random"]#,"max"]#,"random","median"]                      
 n = 5                           # Top-n similar used in collaborative filter
 
@@ -379,11 +382,11 @@ theta = 0.35                    # Awareness Scaling, .35 in paper
 Lambda = 0.75 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 
 # Iterations (for baseline iters1, and with recommenders on iters2)
-iters1 = 200                    # Length of period without recommendations (all agents make 1 purchase/iteration)
-iters2 = 200                    # Length of period with recommendations (uses sales data left at end of Iters1)
-plots = 0                       # 1=produce all plots, 0=plots off
+iters1 = 50                    # Length of period without recommendations (all agents make 1 purchase/iteration)
+iters2 = 300                    # Length of period with recommendations (uses sales data left at end of Iters1)
+plots = 1                       # 1=produce all plots, 0=plots off
 
-# Added functionalities, e.g. timer-based awareness, percentage of online products users, moving users (instead of fixed)
+# Added functionalities (compared to Flered's and Hosanagar's), e.g. timer-based awareness, percentage of online products users, moving users (instead of fixed)
 added = False
 timeValue = 100 				# number of iterations until the awareness fades away, set very high e.g. >iters2 for no effect
 percentageOfActiveUsers = 1.0  	# percentage of active users per iteration, set 1 to agree with paper
@@ -393,21 +396,23 @@ moveAsDistancePercentage = 0.01 # the amount of distance covered when a user mov
 
 # Run simulations
 D = [] # hold the G2-G1 values
-for i in range(10):
+for i in range(1):
 	print("Run:",i)
 	
 	# Generate products and users/customers
-	Users = np.array([ [np.random.normal()/1, np.random.normal()/1] for i in range(A)])
+	Users = np.array([ [np.random.normal()/1.2, np.random.normal()/1.2] for i in range(A)])
 	Products = np.array([ [np.random.normal(), np.random.normal()] for i in range(I)])
 	varBeta = np.array([0 for i in range(A)]) #np.array([(random.random()*40-20) for i in range(A)])
 
 	# Run simulation: configuration 1
 	added = False
+	plots = True
 	Ginis = sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue,percentageOfActiveUsers, percentageOfActiveItems, added, moveAsDistancePercentage)
 	#D.append(Ginis)	
 
 	# Run simulation: configuration 2
 	added = True
+	plots = True
 	Ginis2 = sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue,percentageOfActiveUsers, percentageOfActiveItems, added, moveAsDistancePercentage)
 	D.append(Ginis+Ginis2)	
 
