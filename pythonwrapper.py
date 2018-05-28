@@ -353,8 +353,8 @@ def sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,p
 
 
 # Inputs
-A = 60                         # Agents, users
-I = 80                         # Items, products
+A = 200                         # Agents, users
+I = 300                         # Items, products
 engine = ["CF","CFnorm","min","random"]#,"max"]#,"random","median"]                      
 n = 5                           # Top-n similar used in collaborative filter
 
@@ -404,11 +404,11 @@ for i in range(1):
 	Products = np.array([ [np.random.normal(), np.random.normal()] for i in range(I)])
 	varBeta = np.array([0 for i in range(A)]) #np.array([(random.random()*40-20) for i in range(A)])
 
-	# Run simulation: configuration 1
-	added = False
-	plots = True
-	Ginis = sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue,percentageOfActiveUsers, percentageOfActiveItems, added, moveAsDistancePercentage)
-	#D.append(Ginis)	
+	# # Run simulation: configuration 1
+	# added = False
+	# plots = False
+	# Ginis = sim2fcntimeseries(A,I,iters1,iters2,n,delta,Users,Products,engine,metric,k,plots,spec,varAlpha,varBeta,awaremech,theta,opdist,Lambda,timeValue,percentageOfActiveUsers, percentageOfActiveItems, added, moveAsDistancePercentage)
+	# #D.append(Ginis)	
 
 	# Run simulation: configuration 2
 	added = True
