@@ -31,9 +31,9 @@ class simulation(object):
 	def __init__(self):
 		# Default settings
 		# Inputs
-		self.A = 10                         # Agents, users
-		self.I = 50                         # Items, products
-		self.engine =["CF"]#["CF","min","random"] #["CF","CFnorm","min","random","max","median"]                      
+		self.A = 100                         # Agents, users
+		self.I = 100                         # Items, products
+		self.engine =["CF","min","random"] #["CF","CFnorm","min","random","max","median"]                      
 		self.n = 5                           # Top-n similar used in collaborative filter
 
 		# Choice model
@@ -47,7 +47,7 @@ class simulation(object):
 
 		# Salience
 		self.spec = 3                        # Utility spec for salience: 1=f(del*D), 2=del*f(D), 3=f(D)+del
-		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
+		self.delta = 10                       # Factor by which distance decreases for recommended product, 5 default
 
 		# Awareness, setting selectes predefined awareness settings
 		self.awaremech = 3                   # Awareness mech is wrt: 0=Off, 1=Origin,2=Person,3=Both (note, don't use 2 unless there exists outside good, will make fringe users aware of no products and cause 0 denominator for probability matrix)
@@ -94,6 +94,8 @@ class simulation(object):
 			if eng=="Control": iters = self.iters1
 			else: iters = self.iters2
 			self.Data.update({eng:{"Product Sales Time Series" : np.ones([self.I, iters]), "Sales History" : P.copy(),"All Purchased Products" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),"Awareness" : W.copy(),"D" : D.copy(),"T" : T.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,iters]),"Y" : np.zeros([self.A,iters])}})
+			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
+			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
 	# Make awareness matrix
 	def makeawaremx(self,Dij):
@@ -212,12 +214,13 @@ class simulation(object):
 			
 			# for each iteration
 			for t in range(self.Data[eng]["Iterations"]):
+				#print(eng,t,[item==(0,0) for item in zip(self.Data[eng]["X"][:,t],self.Data[eng]["Y"][:,t])])
 				if t>0: 
 					self.Data[eng]["Product Sales Time Series"][:,t] = self.Data[eng]["Product Sales Time Series"][:,t-1]
+					self.Data[eng]["Users"][user]  = self.Data[eng]["Users"][user].copy()
 					self.Data[eng]["X"][:,t] = self.Data[eng]["X"][:,t-1]
 					self.Data[eng]["Y"][:,t] = self.Data[eng]["Y"][:,t-1]
-					print([item for item in zip(self.Data[eng]["X"],self.Data[eng]["Y"])])
-
+					
 				# random subset of available users and items, applied when added = True
 				(activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) = self.generateRandomSubsetOfAvailableUsersItems()
 				
