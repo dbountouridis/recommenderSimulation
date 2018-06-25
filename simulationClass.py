@@ -523,7 +523,7 @@ class simulation(object):
 
 # Run simulations
 d = []
-for delta in [5,10,15]: # for different types of recommendation salience
+for delta in [5,10]: # for different types of recommendation salience
 	for i in range(1):
 		print("Run:",i)
 		
