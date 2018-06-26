@@ -33,9 +33,9 @@ class simulation(object):
 		# Default settings
 		# Inputs
 		self.A = 50                         # Agents, users
-		self.I = 1000                       # Items, products
+		self.I = 1000                         # Items, products
 		self.engine = ["CF","min","random"] #["CF","CFnorm","min","random","max","median"]                      
-		self.n = 5                          # Top-n similar used in collaborative filter
+		self.n = 5                           # Top-n similar used in collaborative filter
 		
 		# Choice model
 		self.metric = 2                      # 1=(-1)*Distance, 2= -k*Log(Distance), 3=(1/Distance),  2 from paper
@@ -56,8 +56,8 @@ class simulation(object):
 		self.Lambda = 0.75 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
-		self.iters1 = 20                    # Length of period without recommendations (all agents make 1 purchase/iteration)
-		self.iters2 = 20                    # Length of period with recommendations (uses sales data left at end of Iters1)
+		self.iters1 = 50                    # Length of period without recommendations (all agents make 1 purchase/iteration)
+		self.iters2 = 100                    # Length of period with recommendations (uses sales data left at end of Iters1)
 
 		# Added functionalities (compared to Flered's and Hosanagar's), e.g. timer-based awareness, percentage of online products users, moving users (instead of fixed)
 		self.added = False
@@ -86,7 +86,7 @@ class simulation(object):
 			# 	self.Items[np.where(self.ItemsClass==i)[0]] = np.dot(self.Items[np.where(self.ItemsClass==i)[0]], np.random.randn(2, 2)/1)
 
 		# generate a random order of item appearance
-		self.itemOrderOfAppearance = np.arange(self.I).tolist()
+		self.itemOrderOfAppearance = range(self.I)
 		random.shuffle(self.itemOrderOfAppearance)
 
 		self.varBeta = np.array([random.random()*40-20 for i in range(self.A)]) #np.array([(random.random()*40-20) for i in range(A)])
@@ -97,18 +97,21 @@ class simulation(object):
 		# Create distance matrices
 		D = spatial.distance.cdist(self.Users, self.Items)			# distance of products from users
 		self.Do = spatial.distance.cdist([[0,0]], self.Items)[0] 	# distance of products from origin, remains fixed for each engine
+
+		# Create binary awareness matrix 
+		W = self.makeawaremx(D)
 		
 		# Create timer matrix for awareness
-		T = P.copy()+self.timeValue
-		# indecesOfInitialAwareness = W==1
-		# T[indecesOfInitialAwareness] = self.timeValue
+		T = W.copy()
+		indecesOfInitialAwareness = W==1
+		T[indecesOfInitialAwareness] = self.timeValue
 
 		# Create a dictionary structure
 		self.Data = {}
 		for eng in self.engine+["Control"]:
 			if eng=="Control": iters = self.iters1
 			else: iters = self.iters2
-			self.Data.update({eng:{"Item Sales Time Series" : np.ones([self.I, iters]), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),"Awareness" : P.copy(),"D" : D.copy(),"T" : T.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,iters]),"Y" : np.zeros([self.A,iters])}})
+			self.Data.update({eng:{"Item Sales Time Series" : np.ones([self.I, iters]), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),"Awareness" : W.copy(),"D" : D.copy(),"T" : T.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,iters]),"Y" : np.zeros([self.A,iters])}})
 			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
 			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
@@ -205,16 +208,12 @@ class simulation(object):
 
 		if not self.added: return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
 
-		# random users
 		random.shuffle(activeUserIndeces)
 		activeUserIndeces = activeUserIndeces[:int(len(activeUserIndeces)*self.percentageOfActiveUsers)] 
-		nonActiveUserIndeces = [ i  for i in np.arange(self.A) if i not in activeUserIndeces]
-
-		# items are gradually (at each iteration) becoming available
-		activeItemIndeces = self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)]
+		activeItemIndeces = self.itemOrderOfAppearance[:(iteration+1)*(self.I*self.percentageOfActiveItems)]
 		# activeItemIndeces = np.sort(activeItemIndeces[:int(len(activeItemIndeces)*self.percentageOfActiveItems)]).tolist()
 		nonActiveItemIndeces = [ i  for i in np.arange(self.I) if i not in activeItemIndeces]
-		
+		nonActiveUserIndeces = [ i  for i in np.arange(self.A) if i not in activeUserIndeces]
 
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
 
@@ -247,9 +246,7 @@ class simulation(object):
 				# adjust awareness for only available items
 				W__ = self.Data[eng]['Awareness'].copy()
 				W__[:,nonActiveItemIndeces] = 0  
-				W__[:,activeItemIndeces] = 1
-				print('Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
-				#indecesOfInitialAwareness = W__==1
+				indecesOfInitialAwareness = W__==1
 
 				# compute item choice for each active user
 				for user in activeUserIndeces:
