@@ -23,6 +23,15 @@ flatui = sns.color_palette("husl", 8)
 
 
 # sns.lmplot(x="inverseSalience", y="y", col="engine", hue="engine", data=df, col_wrap=2, ci=None, palette="muted", size=4, scatter_kws={"s": 50, "alpha": 1})
+for g, group in df.groupby('itemid'):
+	for i,group3 in group.groupby('engine'):
+		for i,group2 in group3.groupby('userid'):
+				total = np.array(group2).shape[0]
+				if total>1:
+					print("Potential problem:")
+					print(group2)
+					print(g,i,total)
+					time.sleep(1)
 
 # percentage of purchases that were recommended
 D = []
@@ -34,6 +43,12 @@ for g, group in df.groupby('engine'):
 print(D)
 df_ = pd.DataFrame(D,columns=["engine","iteration","ratioOfRecommended"])
 g = sns.factorplot(x="iteration", y="ratioOfRecommended", hue="engine", data=df_, capsize=.2, palette="YlGnBu_d", size=6, aspect=.75, sharey = False, legend = True)
+g.despine(left=True)
+# df.plot.box()
+plt.show()
+
+# purchases per salience
+g = sns.factorplot(y="inverseSalience",x="engine", kind="bar", data=df, capsize=.2, palette="YlGnBu_d", size=6, aspect=.75,  legend = True)
 g.despine(left=True)
 # df.plot.box()
 plt.show()
