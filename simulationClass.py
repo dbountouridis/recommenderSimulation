@@ -58,7 +58,7 @@ class simulation(object):
 		self.moveAsDistancePercentage = 0.1    # the amount of distance covered when a user move towards an item 
 		self.userVarietySeeking = []
 		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
-		self.categoriesInverseSalience = [0.25 for i in range(len(self.categories))]
+		self.categoriesInverseSalience = [0.8/(i+1) for i in range(len(self.categories))]
 		self.Pickle = []
 
 	# Create an instance of simulation based on the parameters
@@ -76,9 +76,9 @@ class simulation(object):
 		# generate items products
 		(X,labels) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
 		gmm = GaussianMixture(n_components=5).fit(X)
-		samples,self.ItemsClass = gmm.sample(self.I)
-		self.Items = samples/20  # scale down
-		self.ItemFeatures = gmm.predict_proba(samples)
+		samples_,self.ItemsClass = gmm.sample(self.I)
+		self.Items = samples_/20  # scale down
+		self.ItemFeatures = gmm.predict_proba(samples_)
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
@@ -105,7 +105,7 @@ class simulation(object):
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
 		# Normal distribution centered around 0.5
 		lower, upper = 0, 1
-		mu, sigma = 0.5, 0.15
+		mu, sigma = 0.8, 0.15
 		X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
 		self.userVarietySeeking = X.rvs(self.A)
 		# print(self.userVarietySeeking)
