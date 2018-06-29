@@ -9,7 +9,10 @@ import seaborn as sns
 import pandas as pd
 import pickle
 from scipy.stats import kendalltau
-
+from sklearn.mixture import GaussianMixture
+'''
+Accent, Accent_r, Blues, Blues_r, BrBG, BrBG_r, BuGn, BuGn_r, BuPu, BuPu_r, CMRmap, CMRmap_r, Dark2, Dark2_r, GnBu, GnBu_r, Greens, Greens_r, Greys, Greys_r, OrRd, OrRd_r, Oranges, Oranges_r, PRGn, PRGn_r, Paired, Paired_r, Pastel1, Pastel1_r, Pastel2, Pastel2_r, PiYG, PiYG_r, PuBu, PuBuGn, PuBuGn_r, PuBu_r, PuOr, PuOr_r, PuRd, PuRd_r, Purples, Purples_r, RdBu, RdBu_r, RdGy, RdGy_r, RdPu, RdPu_r, RdYlBu, RdYlBu_r, RdYlGn, RdYlGn_r, Reds, Reds_r, Set1, Set1_r, Set2, Set2_r, Set3, Set3_r, Spectral, Spectral_r, Wistia, Wistia_r, YlGn, YlGnBu, YlGnBu_r, YlGn_r, YlOrBr, YlOrBr_r, YlOrRd, YlOrRd_r, afmhot, afmhot_r, autumn, autumn_r, binary, binary_r, bone, bone_r, brg, brg_r, bwr, bwr_r, cividis, cividis_r, cool, cool_r, coolwarm, coolwarm_r, copper, copper_r, cubehelix, cubehelix_r, flag, flag_r, gist_earth, gist_earth_r, gist_gray, gist_gray_r, gist_heat, gist_heat_r, gist_ncar, gist_ncar_r, gist_rainbow, gist_rainbow_r, gist_stern, gist_stern_r, gist_yarg, gist_yarg_r, gnuplot, gnuplot2, gnuplot2_r, gnuplot_r, gray, gray_r, hot, hot_r, hsv, hsv_r, icefire, icefire_r, inferno, inferno_r, jet, jet_r, magma, magma_r, mako, mako_r, nipy_spectral, nipy_spectral_r, ocean, ocean_r, pink, pink_r, plasma, plasma_r, prism, prism_r, rainbow, rainbow_r, rocket, rocket_r, seismic, seismic_r, spring, spring_r, summer, summer_r, tab10, tab10_r, tab20, tab20_r, tab20b, tab20b_r, tab20c, tab20c_r, terrain, terrain_r, viridis, viridis_r, vlag, vlag_r, winter, winter_r
+'''
 
 __author__ = 'Dimitrios Bountouridis'
 def pltt(df,output):
@@ -51,6 +54,33 @@ def pltt2(M, r, output):
 	plt.savefig(output, format='pdf')
 	plt.show()
 
+def plotTopics(X,L,X1,L1):
+	sns.set_context("notebook", font_scale=1.4, rc={"lines.linewidth": 1.0})
+	sns.set(style="whitegrid")
+	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+
+	f, ax = plt.subplots()
+	ax.set_aspect("equal")
+	for i in range(5): # 5 topic spaces
+		indeces=np.where(L1==i)[0]
+		x = X1[indeces]
+		indeces=np.where(L==i)[0]
+		x_ = X[indeces]
+		ax = sns.kdeplot(x[:,0], x[:,1], shade=True, shade_lowest=False, alpha = 0.7, cmap=cmaps[i],kernel='gau')
+		color = sns.color_palette(cmaps[i])[-2]
+		plt.scatter(x_[:,0], x_[:,1], c = color, s=5)
+	ax.set_aspect('equal', adjustable='box')
+	ax.set_xlim([-3,3])
+	ax.set_ylim([-3,3])
+	ax.text(1, 1, "virginica", size=16)
+	ax.text(-1, -1, "setosa", size=16)
+	plt.show()
+		
+		
+
+
+
 
 def LogitChoiceByHand(Distances,k):
 	return - k*np.log(Distances)
@@ -74,14 +104,22 @@ for i,v in enumerate(r):
 Do = spatial.distance.cdist([[0,0]], points)[0]
 D = spatial.distance.cdist([user], points)
 
-Awareness = True
-Vutility = True 
-AwTimesV = True
+topicSpace = True
+Awareness = 0
+Vutility = 0 
+AwTimesV = 0
  
 theta = 0.35    # Awareness Scaling, .35 in paper
 Lambda = 0.75   # This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 k = 10 
 
+if topicSpace:
+	(X,labels) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+	gmm = GaussianMixture(n_components=5).fit(X)
+	samples_,ItemsClass = gmm.sample(20000)
+	Items = samples_/20  # scale down
+	ItemFeatures = gmm.predict_proba(samples_)
+	plotTopics(np.array(X)/20,np.array(labels),Items,ItemsClass)
 
 
 if Vutility:
