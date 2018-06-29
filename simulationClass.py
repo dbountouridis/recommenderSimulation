@@ -10,6 +10,7 @@ import pandas as pd
 import pickle
 import networkx as nx
 from sklearn.datasets.samples_generator import make_blobs
+from sklearn.mixture import GaussianMixture
 
 
 __author__ = 'Dimitrios Bountouridis'
@@ -32,37 +33,31 @@ class simulation(object):
 	def __init__(self):
 		# Default settings
 		# Inputs
-		self.A = 150                         # Agents, users
+		self.A = 350                         # Agents, users
 		self.I = 3000                       # Items, products
-		self.engine = ["CF","CFnorm","min","random"] #["CF","CFnorm","min","random","max","median"]                      
+		self.engine = ["CF","min","random"] #["CF","CFnorm","min","random","max","median"]                      
 		self.n = 5                          # Top-n similar used in collaborative filter
 		
 		# Choice model
-		self.metric = 2                      # 1=(-1)*Distance, 2= -k*Log(Distance), 3=(1/Distance),  2 from paper
 		# the higher the k the the consumer prefers closest products
 		self.k = 10                          # Constant used in similarity function,  10 from paper
 
-		# Variety seeking 
-		self.varAlpha = 0.75                 # Variety: parameter governing exponential smooth, 0.75 in paper
-		self.varBeta = 0                     # Variety: coefficient of smooth history in utility function
-
 		# Salience
-		self.spec = 3                        # Utility spec for salience: 1=f(del*D), 2=del*f(D), 3=f(D)+del
 		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
 
 		# Awareness, setting selectes predefined awareness settings
-		self.awaremech = 3                   # Awareness mech is wrt: 0=Off, 1=Origin,2=Person,3=Both (note, don't use 2 unless there exists outside good, will make fringe users aware of no products and cause 0 denominator for probability matrix)
 		self.theta = 0.35                    # Awareness Scaling, .35 in paper
-		self.Lambda = 0.75 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
+		self.Lambda = 0.90 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
 		self.iters1 = [i for i in range(10)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
-		self.iters2 = [i for i in range(10,30)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
+		self.iters2 = [i for i in range(10,20)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
 		self.timeValue = 5         # number of iterations until the awareness fades away, set very high e.g. >iters2 for no effect
 		self.percentageOfActiveUsers = 1.0      # percentage of active users per iteration, set 1 to agree with paper 
 		self.percentageOfActiveItems = 0.032     # percentage of active items per iteration, set 1 to agree with paper         
 		self.moveAsDistancePercentage = 0.1    # the amount of distance covered when a user move towards an item 
-		self.categories = ["Politics","Sports","Business","Arts"]   # For default function use ["Default"]         
+		self.userVarietySeeking = []
+		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
 		self.categoriesInverseSalience = [0.25 for i in range(len(self.categories))]
 		self.Pickle = []
 
@@ -79,16 +74,11 @@ class simulation(object):
 			availability at each iteration. Items also have a limited lifespan. Items have salience also.
 		'''
 		# generate items products
-		if len(self.categories)==1: # Default behavior
-			self.Items, self.ItemsClass = make_blobs(n_samples=self.I, centers=[(0,0)], n_features=2,random_state=seed, center_box =(-2,2), cluster_std = [0.9])
-		else:
-			self.Items, self.ItemsClass = make_blobs(n_samples=self.I, random_state=seed, centers = len(self.categories), n_features=2, center_box =(-2,2), cluster_std = [0.6 for i in range(0,len(self.categories))])
-			
-
-			# # Stretch the distributions
-			# for i in range(len(self.categories)):
-			# 	#rng = np.random.RandomState(i)
-			# 	self.Items[np.where(self.ItemsClass==i)[0]] = np.dot(self.Items[np.where(self.ItemsClass==i)[0]], np.random.randn(2, 2)/1)
+		(X,labels) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+		gmm = GaussianMixture(n_components=5).fit(X)
+		samples,self.ItemsClass = gmm.sample(self.I)
+		self.Items = samples/20  # scale down
+		self.ItemFeatures = gmm.predict_proba(samples)
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
@@ -110,11 +100,19 @@ class simulation(object):
 			should be later used.
 		'''
 		# Generate users/customers
-		#self.Users, _ = make_blobs(n_samples=self.A, centers=[(0,0)], n_features=2,random_state=seed, center_box =(-2,2), cluster_std = [1.0])
 		self.Users = np.random.uniform(-3,3,(self.A,2))
 
-		# random varBeta setting
-		self.varBeta = np.array([random.random()*40-20 for i in range(self.A)]) 
+		# Randomly assign how willing each user is to change preferences (used in choice model). 
+		# Normal distribution centered around 0.5
+		lower, upper = 0, 1
+		mu, sigma = 0.5, 0.15
+		X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+		self.userVarietySeeking = X.rvs(self.A)
+		# print(self.userVarietySeeking)
+		# fig, ax = plt.subplots(2, sharex=True)
+		# ax[0].hist(self.userVarietySeeking, normed=True)
+		# plt.show()
+
 
 		P = np.zeros([self.A,self.I]) 	# Purchases, sales history
 		H = P.copy() 	 				# Loyalty histories
@@ -133,42 +131,27 @@ class simulation(object):
 
 	# Make awareness matrix
 	def makeawaremx(self,eng):
-		# awaremech==3   # not used currently
+		random.seed(1)
+
 		Dij = self.Data[eng]["D"]
 		W = np.zeros([self.A,self.I])
+		W2 = W.copy() # for analysis purposes
 		for a in range(self.A):
 			for i in range(self.I):
 				W[a,i] = self.Lambda*np.exp(-(np.power(self.Data[eng]["ItemInverseSalience"][i],2))/(self.theta/1)) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/(self.theta/3))
+				W2[a,i] = self.Lambda*np.exp(-(np.power(self.Data[eng]["ItemInverseSalience"][i],2))/(self.theta/1)) 
 				W[a,i] = random.random()<W[a,i] # probabilistic
-		return W
+				W2[a,i] = random.random()<W2[a,i] # probabilistic
+		return W,W2
 
 	# Probabilistic choice model
 	def ChoiceModel(self, eng, user, Rec, w, control = False):
 
 		Distances = self.Data[eng]["D"][user,:]
-		smoothhist = self.Data[eng]["H"][user,:]
-		varBeta =  self.varBeta[user]
+		Similarity = np.power(Distances,-self.k)
+		V = 1*Similarity #+ varBeta*smoothhist
 
-		if control : spec = 0 # if control period
-		else: spec = self.spec
-
-		if spec==1: Distances[Rec] = Distances[Rec]*self.delta
-
-		# Convert distance to similarity based on metric
-		if self.metric == 1: Similarity = - Distances
-		if self.metric == 2: Similarity = - self.k*np.log(Distances)
-		if self.metric == 3: Similarity = np.power(Distances,-self.k)
-
-		# Calc deterministic utility (based on utility spec desired)
-		#spec: 0 = f(d), 1 = f(Delta*d), 2 = delta*f(d), 3 = f(d) + Delta
-		V = 1*Similarity + varBeta*smoothhist
-
-		# If spec==0, f(d)      +...  don't do anything: rec's off and no salience
-		# If spec==1, f(Delta*d)+...  don't do anything: already multiplied above
-		if spec==2:  
-			V[Rec] = self.delta*1*Similarity[Rec] + varBeta*smoothhist[Rec]
-		if spec==3:
-			V[Rec] = 1*Similarity[Rec] + self.delta + varBeta*smoothhist[Rec]
+		if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
 		
 		# Introduce the stochastic component
 		R = [random.random() for v in range(len(V))]
@@ -184,7 +167,7 @@ class simulation(object):
 		# compute new user location. But the probability that the user will move towards
 		# the item is proportional to their distance
 		dist = self.Data[eng]["D"][user,indexOfChosenItem]
-		p = np.exp(-(np.power(dist,2))/(.35/3)) # based on the awareness formula
+		p = np.exp(-(np.power(dist,2))/(self.userVarietySeeking[user])) # based on the awareness formula
 		B = np.array(self.Data[eng]["Users"][user])
 		P = np.array(self.Items[indexOfChosenItem])
 		BP = P - B
@@ -257,7 +240,8 @@ class simulation(object):
 				(activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) = self.subsetOfAvailableUsersItems(epoch, eng)
 				
 				# compute awareness per user and adjust for availability 
-				Awareness = self.makeawaremx(eng)
+				Awareness, AwarenessOnlyPopular = self.makeawaremx(eng)
+				AwarenessProximity = Awareness - AwarenessOnlyPopular	
 				Awareness[:,nonActiveItemIndeces] = 0
 
 				# do not make available items that a user has purchased before
@@ -288,11 +272,12 @@ class simulation(object):
 						Rec = -1
 						indexOfChosenItem =  self.ChoiceModel(eng, user, Rec, Awareness[user,:], control = True) 
 
-					self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemInverseSalience"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec ])
+					# store some data for stats
+					typeOf = "None"
+					if indexOfChosenItem in np.where(AwarenessProximity[user,:]==1)[0]: typeOf = "inProximity"
+					if indexOfChosenItem in np.where(AwarenessOnlyPopular[user,:]==1)[0]: typeOf = "inPopular"
+					self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemInverseSalience"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec , typeOf])
 					
-					# update loyalty smooths
-					self.Data[eng]["H"][user,:] = self.varAlpha*self.Data[eng]["H"][user,:]						
-					self.Data[eng]["H"][user, indexOfChosenItem] += (1-self.varAlpha)
 
 					# add item purchase to histories
 					self.Data[eng]["Sales History"][user, indexOfChosenItem] += 1				
@@ -305,7 +290,7 @@ class simulation(object):
 				self.addedFunctionalitiesAfterIteration(eng, activeItemIndeces)
 
 		# store
-		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended"])
+		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","ProximityOrPopular"])
 		df.to_pickle("temp/history.pkl")
 		pickle.dump(self.Data, open("temp/Data.pkl", "wb"))
 					
@@ -406,7 +391,8 @@ class simulation(object):
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 		flatui = sns.color_palette("husl", 8)
 		f, ax = plt.subplots(1,1, figsize=(6,6))
-		ax.scatter(self.Users[:,0], self.Users[:,1], marker='.', c='b',s=40,alpha=0.3)
+		for i in range(self.A):
+			ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[i],edgecolors="k",linewidths=0.5)
 		for i in range(self.I):
 			color = flatui[self.ItemsClass[i]]
 			ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=10)	
@@ -417,6 +403,8 @@ class simulation(object):
 
 	# Plotting	    
 	def plot2D(self, drift = False):
+		self.Data = pickle.load(open("temp/Data.pkl",'rb'))
+
 		sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 		flatui = sns.color_palette("husl", 8)
@@ -566,7 +554,7 @@ class simulation(object):
 d = []
 for delta in [10]: # for different types of recommendation salience
 	for i in range(1):
-		print("Run:",i)
+		# print("Run:",i)
 		
 		print("Initialize simulation class...")
 		sim = simulation()
