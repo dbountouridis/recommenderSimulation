@@ -13,7 +13,7 @@ from sklearn.datasets.samples_generator import make_blobs
 from sklearn.mixture import GaussianMixture
 
 
-__author__ = 'Dimitrios Bountouridis'
+__author__ = 'Dimitrios  Bountouridis'
 
 
 # Gini coefficient computation
