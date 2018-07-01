@@ -54,11 +54,12 @@ def pltt2(M, r, output):
 	plt.savefig(output, format='pdf')
 	plt.show()
 
-def plotTopics(X,L,X1,L1):
+def plotTopics(X,L,X1,L1,classes):
 	sns.set_context("notebook", font_scale=1.4, rc={"lines.linewidth": 1.0})
 	sns.set(style="whitegrid")
 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+	t = ["entertainment","business","sport","politics","tech"]
 
 	f, ax = plt.subplots()
 	ax.set_aspect("equal")
@@ -71,16 +72,29 @@ def plotTopics(X,L,X1,L1):
 		color = sns.color_palette(cmaps[i])[-2]
 		plt.scatter(x_[:,0], x_[:,1], c = color, s=5)
 	ax.set_aspect('equal', adjustable='box')
-	ax.set_xlim([-3,3])
-	ax.set_ylim([-3,3])
-	ax.text(1, 1, "virginica", size=16)
-	ax.text(-1, -1, "setosa", size=16)
+	ax.set_xlim([-4,4])
+	ax.set_ylim([-4,4])
+	for i in range(5): # 5 topic spaces
+		indeces=np.where(L==i)[0]
+		x = X[indeces[0]]
+		if classes[indeces[0]] == "sport":
+			x = -2.5
+			y = -2
+		if classes[indeces[0]] == "business":
+			x = 2
+			y = -1.5
+		if classes[indeces[0]] == "politics":
+			x = 1
+			y = -2.5
+		if classes[indeces[0]] == "entertainment":
+			x = -2.5
+			y = 2.5
+		if classes[indeces[0]] == "tech":
+			x = 1
+			y = 2.5
+		ax.text(x, y, classes[indeces[0]], size=14)
+		
 	plt.show()
-		
-		
-
-
-
 
 def LogitChoiceByHand(Distances,k):
 	return - k*np.log(Distances)
@@ -114,12 +128,13 @@ Lambda = 0.75   # This is crucial since it controls how much the users focus on 
 k = 10 
 
 if topicSpace:
-	(X,labels) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+	random.seed(1)
+	(X,lab1els,classes) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
 	gmm = GaussianMixture(n_components=5).fit(X)
-	samples_,ItemsClass = gmm.sample(20000)
+	samples_,ItemsClass = gmm.sample(1000)
 	Items = samples_/20  # scale down
 	ItemFeatures = gmm.predict_proba(samples_)
-	plotTopics(np.array(X)/20,np.array(labels),Items,ItemsClass)
+	plotTopics(np.array(X)/20,np.array(labels),Items,ItemsClass,classes)
 
 
 if Vutility:

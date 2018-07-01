@@ -33,8 +33,8 @@ class simulation(object):
 	def __init__(self):
 		# Default settings
 		# Inputs
-		self.A = 350                         # Agents, users
-		self.I = 3000                       # Items, products
+		self.A = 20                         # Agents, users
+		self.I = 3500                       # Items, products
 		self.engine = ["CF","min","random"] #["CF","CFnorm","min","random","max","median"]                      
 		self.n = 5                          # Top-n similar used in collaborative filter
 		
@@ -46,8 +46,9 @@ class simulation(object):
 		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
 
 		# Awareness, setting selectes predefined awareness settings
-		self.theta = 0.35                    # Awareness Scaling, .35 in paper
-		self.Lambda = 0.90 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
+		self.theta = 0.1                    # Awareness Scaling, .35 in paper
+		self.thetaDot = 0.25
+		self.Lambda = 0.5 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
 		self.iters1 = [i for i in range(10)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
@@ -58,7 +59,7 @@ class simulation(object):
 		self.moveAsDistancePercentage = 0.1    # the amount of distance covered when a user move towards an item 
 		self.userVarietySeeking = []
 		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
-		self.categoriesInverseSalience = [0.8/(i+1) for i in range(len(self.categories))]
+		self.categoriesSalience = [0.8,0.5,1,0.7,0.5] # arbitrary assigned
 		self.Pickle = []
 
 	# Create an instance of simulation based on the parameters
@@ -74,10 +75,11 @@ class simulation(object):
 			availability at each iteration. Items also have a limited lifespan. Items have salience also.
 		'''
 		# generate items products
-		(X,labels) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+		print(set(labels))
 		gmm = GaussianMixture(n_components=5).fit(X)
 		samples_,self.ItemsClass = gmm.sample(self.I)
-		self.Items = samples_/20  # scale down
+		self.Items = samples_/55  # scale down
 		self.ItemFeatures = gmm.predict_proba(samples_)
 
 		# generate a random order of item availability
@@ -91,7 +93,7 @@ class simulation(object):
 		# self.Do = spatial.distance.cdist([[0,0]], self.Items)[0] 
 
 		# item salience 
-		ItemInverseSalience = np.array([ random.random()*5*self.categoriesInverseSalience[self.ItemsClass[i]] for i in range(self.I)])	
+		self.initialS = np.array([ random.random()*self.categoriesSalience[self.ItemsClass[i]] for i in range(self.I)])	
 
 
 		''' 
@@ -100,7 +102,7 @@ class simulation(object):
 			should be later used.
 		'''
 		# Generate users/customers
-		self.Users = np.random.uniform(-3,3,(self.A,2))
+		self.Users = np.random.uniform(-1,1,(self.A,2))
 
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
 		# Normal distribution centered around 0.5
@@ -125,7 +127,7 @@ class simulation(object):
 		for eng in self.engine+["Control"]:
 			if eng=="Control": iters = self.iters1
 			else: iters = self.iters2
-			self.Data.update({eng:{"ItemInverseSalience":ItemInverseSalience.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,len(iters)]),"Y" : np.zeros([self.A,len(iters)])}})
+			self.Data.update({eng:{"ItemSalience":self.initialS.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,len(iters)]),"Y" : np.zeros([self.A,len(iters)])}})
 			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
 			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
@@ -138,8 +140,8 @@ class simulation(object):
 		W2 = W.copy() # for analysis purposes
 		for a in range(self.A):
 			for i in range(self.I):
-				W[a,i] = self.Lambda*np.exp(-(np.power(self.Data[eng]["ItemInverseSalience"][i],2))/(self.theta/1)) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/(self.theta/3))
-				W2[a,i] = self.Lambda*np.exp(-(np.power(self.Data[eng]["ItemInverseSalience"][i],2))/(self.theta/1)) 
+				W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemSalience"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemSalience"][i],2))) 
 				W[a,i] = random.random()<W[a,i] # probabilistic
 				W2[a,i] = random.random()<W2[a,i] # probabilistic
 		return W,W2
@@ -191,7 +193,7 @@ class simulation(object):
 		self.Data[eng]["ItemLifespan"][self.Data[eng]["ItemLifespan"]<0] = 0 # no negatives	
 
 		# update salience based on lifespan, naive
-		self.Data[eng]['ItemInverseSalience'][activeItemIndeces]=self.Data[eng]['ItemInverseSalience'][activeItemIndeces]+0.1
+		self.Data[eng]['ItemSalience'][activeItemIndeces]=self.Data[eng]['ItemSalience'][activeItemIndeces]/2
 
 
 	'''
@@ -225,7 +227,7 @@ class simulation(object):
 				self.Data[eng]["InitialUsers"] = self.Data["Control"]["Users"].copy() 	# this won't be updated
 				self.Data[eng]["Users"] = self.Data["Control"]["Users"].copy()			# this will be updated
 				self.Data[eng]["ItemLifespan"] = self.Data["Control"]["ItemLifespan"].copy() # this will be updated
-				self.Data[eng]["ItemInverseSalience"] = self.Data["Control"]["ItemInverseSalience"].copy()# this will be updated
+				self.Data[eng]["ItemSalience"] = self.Data["Control"]["ItemSalience"].copy()# this will be updated
 			
 			# for each iteration
 			for epoch_index, epoch in enumerate(self.Data[eng]["Iterations"]):
@@ -250,12 +252,14 @@ class simulation(object):
 				 
 				
 				print("    Mean #aware of:",np.mean(np.sum(Awareness,axis=1)),"Mean #aware of before:",np.mean(np.sum(Before,axis=1)))
+				print("    Mean #aware of popularity:",np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)),"Mean #aware of proximity:",np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))
 				print("    Mean lifespan of available items:",np.mean(self.Data[eng]["ItemLifespan"][activeItemIndeces]))
 				print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
 				#indecesOfInitialAwareness = W__==1
 
 				# compute item choice for each active user
 				for user in activeUserIndeces:
+					#if epoch>5: self.simplePlot(forUser = user, awareness = Awareness[user, :], active = activeItemIndeces)
 					if eng is not "Control":
 						# recommend one of the available items
 						Rec = activeItemIndeces[self.recengine(eng, user, activeItemIndeces)] 	
@@ -276,7 +280,7 @@ class simulation(object):
 					typeOf = "None"
 					if indexOfChosenItem in np.where(AwarenessProximity[user,:]==1)[0]: typeOf = "inProximity"
 					if indexOfChosenItem in np.where(AwarenessOnlyPopular[user,:]==1)[0]: typeOf = "inPopular"
-					self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemInverseSalience"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec , typeOf])
+					self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemSalience"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec , typeOf])
 					
 
 					# add item purchase to histories
@@ -386,16 +390,28 @@ class simulation(object):
 		return GiniPerRec
 	
 	# plot initial users, products on 2d plane 
-	def simplePlot(self):
-		sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
+	def simplePlot(self, forUser = False, awareness = False, active = False):
+		sns.set_context("notebook", font_scale=1.4, rc={"lines.linewidth": 1.0})
+		sns.set(style="whitegrid")
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
-		flatui = sns.color_palette("husl", 8)
+		flatui = sns.color_palette("husl", 5)
 		f, ax = plt.subplots(1,1, figsize=(6,6))
-		for i in range(self.A):
-			ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[i],edgecolors="k",linewidths=0.5)
-		for i in range(self.I):
-			color = flatui[self.ItemsClass[i]]
-			ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=10)	
+		if not forUser:
+			for i in range(self.A):
+				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[i],edgecolors="k",linewidths=0.5)
+			for i in range(self.I):
+				color = flatui[self.ItemsClass[i]]
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialS[i], alpha =0.8)	
+		else:
+			ax.scatter(self.Users[forUser,0], self.Users[forUser,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[forUser],edgecolors="k",linewidths=0.5)
+			#print(np.where(np.array(awareness)==1)[0])
+			for i in np.where(np.array(awareness)==1)[0]:
+				color = flatui[self.ItemsClass[i]]
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialS[i], alpha =1)	
+			for i in np.where(np.array(awareness)==0)[0]:
+				if i in active:
+					ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c='k',s=10*self.initialS[i], alpha =0.1)	
+
 		ax.set_aspect('equal', adjustable='box')
 		plt.tight_layout()
 		plt.savefig("plots/initial-users-products.pdf")
