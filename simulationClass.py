@@ -33,9 +33,9 @@ class simulation(object):
 	def __init__(self):
 		# Default settings
 		# Inputs
-		self.A = 100                         # Agents, users
+		self.A = 30                        # Agents, users
 		self.I = 3500                       # Items, products
-		self.engine = ["min"] #["CF","CFnorm","min","random","max","median"]                      
+		self.engine = []#["CF","CFnorm","min","random"]                      
 		self.n = 5                          # Top-n similar used in collaborative filter
 		
 		# Choice model
@@ -47,14 +47,13 @@ class simulation(object):
 
 		# Awareness, setting selectes predefined awareness settings
 		self.theta = 0.1                    # Awareness Scaling, .35 in paper
-		self.thetaDot = 0.015
+		self.thetaDot = 0.065
 		self.Lambda = 0.5 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
-		self.salienceDecreasePerIteration = 0.1
+		self.rankingDecreasePerIteration = 0.1
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
-		self.iters1 = [i for i in range(10)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
+		self.iters1 = [i for i in range(19)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
 		self.iters2 = [i for i in range(10,20)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
-		self.timeValue = 5         # number of iterations until the awareness fades away, set very high e.g. >iters2 for no effect
 		self.percentageOfActiveUsers = 1.0      # percentage of active users per iteration, set 1 to agree with paper 
 		self.percentageOfActiveItems = 0.032     # percentage of active items per iteration, set 1 to agree with paper         
 		self.moveAsDistancePercentage = 0.1    # the amount of distance covered when a user move towards an item 
@@ -73,7 +72,7 @@ class simulation(object):
 			as 2d guassian distributions roughly centered around (0, 0). Later their 2d distribution should
 			be based on PCA/t-sne feature reduction on real life data. New items appear at each iteration 
 			but instead of generating new items we generate all of them at the beginning, and adjust their 
-			availability at each iteration. Items also have a limited lifespan. Items have salience also.
+			availability at each iteration. Items also have a limited lifespan. Items have energy also.
 		'''
 		# generate items products
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
@@ -88,21 +87,21 @@ class simulation(object):
 		random.shuffle(self.itemOrderOfAppearance)
 
 		# create timer matrix (lifespan) for item availability
-		L = np.array([self.timeValue for i in range(self.I)])
+		L = np.array([1 for i in range(self.I)])
 
 		# distance of products from origin, remains fixed for each engine
 		# self.Do = spatial.distance.cdist([[0,0]], self.Items)[0] 
 
-		# item salience 
-		self.initialS = np.zeros(self.I)
+		# item ranking
+		self.initialR = np.zeros(self.I)
 		for i in range(5):
 			indeces = np.where(self.ItemsClass==i)[0]
 			lower, upper = 0, 1
 			mu, sigma = self.categoriesSalience[i], 0.15
 			X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
-			self.initialS[indeces] = X.rvs(len(indeces))
+			self.initialR[indeces] = X.rvs(len(indeces))
 			# fig, ax = plt.subplots(2, sharex=True)
-			# ax[0].hist(self.initialS[indeces], normed=True)
+			# ax[0].hist(self.initialR[indeces], normed=True)
 			# plt.show()
 			
 			 	
@@ -115,7 +114,7 @@ class simulation(object):
 		self.Users = np.random.uniform(-1,1,(self.A,2))
 
 		# size of session per user (e.g. amount of articles read per day)
-		self.UserSessionSize = [1+int(random.random()*5) for i in range(self.A)]
+		self.UserSessionSize = [1 for i in range(self.A)]
 		print(self.UserSessionSize)
 
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
@@ -141,7 +140,7 @@ class simulation(object):
 		for eng in self.engine+["Control"]:
 			if eng=="Control": iters = self.iters1
 			else: iters = self.iters2
-			self.Data.update({eng:{"ItemSalience":self.initialS.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,len(iters)]),"Y" : np.zeros([self.A,len(iters)])}})
+			self.Data.update({eng:{"ItemRanking":self.initialR.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,len(iters)]),"Y" : np.zeros([self.A,len(iters)])}})
 			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
 			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
@@ -152,31 +151,40 @@ class simulation(object):
 		Dij = self.Data[eng]["D"]
 		W = np.zeros([self.A,self.I])
 		W2 = W.copy() # for analysis purposes
+		W3 = W.copy()
 		for a in range(self.A):
 			for i in range(self.I):
-				W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemSalience"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemSalience"][i],2))) 
-				W[a,i] = random.random()<W[a,i] # probabilistic
-				W2[a,i] = random.random()<W2[a,i] # probabilistic
-		return W,W2
+				W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemRanking"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemRanking"][i],2))) 
+				W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				r = random.random()
+				W[a,i] = r<W[a,i] # probabilistic
+				# W2[a,i] = r<W2[a,i] # probabilistic
+				# W3[a,i] = r<W3[a,i] # probabilistic
+		return W,W2,W3
 
 	# Probabilistic choice model
 	def ChoiceModel(self, eng, user, Rec, w, control = False):
 
-		Distances = self.Data[eng]["D"][user,:]
-		Similarity = np.power(Distances,-self.k)
-		V = 1*Similarity #+ varBeta*smoothhist
+		# Distances = self.Data[eng]["D"][user,:]
+		# Similarity = np.power(Distances,-self.k)
+		# V = 1*Similarity #+ varBeta*smoothhist
 
-		if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
+		# if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
 		
-		# Introduce the stochastic component
-		R = [random.random() for v in range(len(V))]
-		E = -np.log(-np.log(R))
-		U = V + E
-		sel = np.where(w==1)[0]
-		mx = np.argmax(U[sel])
-		i = sel[mx]
-		return i # index of chosen item
+		# # Introduce the stochastic component
+		# R = [random.random() for v in range(len(V))]
+		# E = -np.log(-np.log(R))
+		# U = V + E
+		# sel = np.where(w==1)[0]
+		# mx = np.argmax(U[sel])
+		# i = sel[mx]
+		if random.random()<0.3 and w[Rec]==1 and not control: return Rec
+
+		# random choice
+		sel = np.where(w==1)[0].tolist()
+		random.shuffle(sel)
+		return sel[0] # index of chosen item
 
 	# Compute new position of a user given they purchased an item
 	def computeNewPositionOfUserToItem(self, eng, user, indexOfChosenItem, iteration):
@@ -197,17 +205,22 @@ class simulation(object):
 		After each iteration the new user to item position is recomputed. Each item's lifespan is also
 		decreased (applies only to those items that were available in the current iteration).
 	'''
+	def rankingFunction(self, currentRanking, life):
+		x = life
+		y = (-0.1*x+1)*currentRanking
+		return max([y, 0])
+
 	def addedFunctionalitiesAfterIteration(self, eng, activeItemIndeces):
 
 		# update user-item distances based on new user positions
 		self.Data[eng]["D"] = spatial.distance.cdist(self.Data[eng]["Users"], self.Items)	
 
 		# update lifespan of available items
-		self.Data[eng]["ItemLifespan"][activeItemIndeces] = self.Data[eng]["ItemLifespan"][activeItemIndeces]-1
-		self.Data[eng]["ItemLifespan"][self.Data[eng]["ItemLifespan"]<0] = 0 # no negatives	
-
-		# update salience based on lifespan, naive
-		self.Data[eng]['ItemSalience'][activeItemIndeces]-=self.Data[eng]['ItemSalience'][activeItemIndeces]*self.salienceDecreasePerIteration
+		self.Data[eng]["ItemLifespan"][activeItemIndeces] = self.Data[eng]["ItemLifespan"][activeItemIndeces]+1
+		#self.Data[eng]["ItemLifespan"][self.Data[eng]["ItemLifespan"]<0] = 0 # no negatives	
+		# update ranking based on lifespan, naive
+		for a in activeItemIndeces:
+			self.Data[eng]['ItemRanking'][a]= self.rankingFunction(self.initialR[a],self.Data[eng]['ItemLifespan'][a])
 
 
 	'''
@@ -223,7 +236,7 @@ class simulation(object):
 		nonActiveUserIndeces = [ i  for i in np.arange(self.A) if i not in activeUserIndeces]
 
 		# items are gradually (at each iteration) becoming available, but have limited lifspan
-		activeItemIndeces =[j for j in self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)] if self.Data[eng]["ItemLifespan"][j]>0]
+		activeItemIndeces =[j for j in self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)] if self.Data[eng]["ItemRanking"][j]>0]
 		nonActiveItemIndeces = [ i  for i in np.arange(self.I) if i not in activeItemIndeces]
 		
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
@@ -241,7 +254,7 @@ class simulation(object):
 				self.Data[eng]["InitialUsers"] = self.Data["Control"]["Users"].copy() 	# this won't be updated
 				self.Data[eng]["Users"] = self.Data["Control"]["Users"].copy()			# this will be updated
 				self.Data[eng]["ItemLifespan"] = self.Data["Control"]["ItemLifespan"].copy() # this will be updated
-				self.Data[eng]["ItemSalience"] = self.Data["Control"]["ItemSalience"].copy()# this will be updated
+				self.Data[eng]["ItemRanking"] = self.Data["Control"]["ItemRanking"].copy()# this will be updated
 			
 			# for each iteration
 			for epoch_index, epoch in enumerate(self.Data[eng]["Iterations"]):
@@ -255,21 +268,25 @@ class simulation(object):
 				# random subset of available users . Subset of available items to all users
 				(activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) = self.subsetOfAvailableUsersItems(epoch, eng)
 				
-				# compute awareness per user and adjust for availability 
-				Awareness, AwarenessOnlyPopular = self.makeawaremx(eng)
-				AwarenessProximity = Awareness - AwarenessOnlyPopular	
-				Awareness[:,nonActiveItemIndeces] = 0
+				# # compute awareness per user and adjust for availability 
+				Awareness, AwarenessOnlyPopular,AwarenessProximity = self.makeawaremx(eng)
+				Awareness[:,nonActiveItemIndeces] = 0 
 
-				# do not make available items that a user has purchased before
-				Before = Awareness.copy()
+				# # do not make available items that a user has purchased before
+				# Before = Awareness.copy()
 				Awareness = Awareness - self.Data[eng]["Sales History"]>0
+
+				for i in range(1,10):
+					indeces = np.where(self.Data[eng]["ItemLifespan"]==i)[0]
+					A = Awareness[:,indeces]
+					print("    Mean #aware of age",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
 				 
 				
-				print("    Mean #aware of:",np.mean(np.sum(Awareness,axis=1)),"Mean #aware of before:",np.mean(np.sum(Before,axis=1)))
-				print("    Mean #aware of popularity:",np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)),"Mean #aware of proximity:",np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))
-				print("    Mean lifespan of available items:",np.mean(self.Data[eng]["ItemLifespan"][activeItemIndeces]))
-				print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
-				#indecesOfInitialAwareness = W__==1
+				# print("    Mean #aware of:",np.mean(np.sum(Awareness,axis=1)),"Mean #aware of before:",np.mean(np.sum(Before,axis=1)))
+				# print("    Mean #aware of popularity:",np.mean(np.sum(AwarenessOnlyPopular,axis=1)),"Mean #aware of proximity:",np.mean(np.sum(AwarenessProximity,axis=1)))
+				# print("    Mean lifespan of available items:",np.mean(self.Data[eng]["ItemLifespan"][activeItemIndeces]))
+				# print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
+				
 
 				# for each active user
 				for user in activeUserIndeces:
@@ -279,7 +296,6 @@ class simulation(object):
 					if eng is not "Control":
 						# recommend one of the available items
 						Rec = activeItemIndeces[self.recengine(eng, user, activeItemIndeces)] 	
-						
 						# temporary adjust awareness for that item-user pair
 						Awareness[user, Rec] = 1				
 
@@ -297,23 +313,24 @@ class simulation(object):
 						Awareness[user, indexOfChosenItem] = 0
 
 						# add item purchase to histories
-						self.Data[eng]["Sales History"][user, indexOfChosenItem] += 1				
+						self.Data[eng]["Sales History"][user, indexOfChosenItem] += 1		
 						self.Data[eng]["All Purchased Items"].append(indexOfChosenItem)		
 
 						# compute new user position (we don't store the position in the session, only after it is over)
 						self.computeNewPositionOfUserToItem(eng, user, indexOfChosenItem, epoch_index)
 
 						# store some data for stats
-						typeOf = "None"
-						if indexOfChosenItem in np.where(AwarenessProximity[user,:]==1)[0]: typeOf = "inProximity"
-						if indexOfChosenItem in np.where(AwarenessOnlyPopular[user,:]==1)[0]: typeOf = "inPopular"
-						self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemSalience"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec , typeOf])
+						# typeOf = "None"
+						# if indexOfChosenItem in np.where(AwarenessProximity[user,:]==1)[0]: typeOf = "inProximity"
+						# if indexOfChosenItem in np.where(AwarenessOnlyPopular[user,:]==1)[0]: typeOf = "inPopular"
+						if epoch>9:
+							self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemRanking"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec ])
 						
 				# after each iteration	
 				self.addedFunctionalitiesAfterIteration(eng, activeItemIndeces)
 
 		# store
-		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","ProximityOrPopular"])
+		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended"])
 		df.to_pickle("temp/history.pkl")
 		pickle.dump(self.Data, open("temp/Data.pkl", "wb"))
 					
@@ -420,16 +437,16 @@ class simulation(object):
 				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[i],edgecolors="k",linewidths=0.5)
 			for i in range(self.I):
 				color = flatui[self.ItemsClass[i]]
-				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialS[i], alpha =0.8)	
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialR[i], alpha =0.8)	
 		else:
 			ax.scatter(self.Users[forUser,0], self.Users[forUser,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[forUser],edgecolors="k",linewidths=0.5)
 			#print(np.where(np.array(awareness)==1)[0])
 			for i in np.where(np.array(awareness)==1)[0]:
 				color = flatui[self.ItemsClass[i]]
-				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialS[i], alpha =1)	
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialR[i], alpha =1)	
 			for i in np.where(np.array(awareness)==0)[0]:
 				if i in active:
-					ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c='k',s=10*self.initialS[i], alpha =0.1)	
+					ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c='k',s=10*self.initialR[i], alpha =0.1)	
 
 		ax.set_aspect('equal', adjustable='box')
 		plt.tight_layout()
@@ -485,7 +502,7 @@ class simulation(object):
 			n, bins = np.histogram(self.Data[period]["All Purchased Items"], bins=range(self.I+1))
 			circle1 = plt.Circle((0, 0), 1, color='g',fill=True,alpha=0.3,zorder=-1)
 			ax[p].add_artist(circle1)
-			#ax[p].scatter(self.Data[period]["Initialself.Users"][:,0], self.Data[period]["Initialself.Users"][:,1], marker='.', c='b',s=40,alpha=0.3)
+			#ax[p].scatter(self.Data[period]["initialRelf.Users"][:,0], self.Data[period]["initialRelf.Users"][:,1], marker='.', c='b',s=40,alpha=0.3)
 			for i in range(len(self.Users[:,1])):
 				ax[p].scatter(self.Data[period]["Users"][i,0], self.Data[period]["Users"][i,1], marker='.', c='b',s=40,alpha=0.2+0.8*((self.varBeta[i]+20)/40) )
 			ax[p].set_xlabel(period)
