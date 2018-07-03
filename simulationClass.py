@@ -29,6 +29,7 @@ def gini(x):
 	return G
 
 
+
 class simulation(object):
 	def __init__(self):
 		# Default settings
@@ -168,6 +169,7 @@ class simulation(object):
 
 		# Distances = self.Data[eng]["D"][user,:]
 		# Similarity = np.power(Distances,-self.k)
+		#Similarity = -self.k*np.log(Distances).  # this one!!!
 		# V = 1*Similarity #+ varBeta*smoothhist
 
 		# if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
