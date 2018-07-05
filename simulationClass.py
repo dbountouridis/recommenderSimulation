@@ -33,52 +33,49 @@ def gini(x):
 class simulation(object):
 	def __init__(self):
 		# Default settings
-		# Inputs
-		self.A = 30                        # Agents, users
-		self.I = 3500                       # Items, products
+		# Inputs: users
+		self.A = 200                        # Agents, users
+		self.percentageOfActiveUsers = 1.0 # percentage of active users per iteration
+		self.m = 0.05    # the amount of distance covered when a user move towards an item 
+
+		# Inputs: articles
+		self.totalDaysIterations = 40
+		self.newArticlesPerDay = 150
+		self.I = self.totalDaysIterations*self.newArticlesPerDay                    
+		self.percentageOfActiveItems = self.newArticlesPerDay/self.I  
+		
 		self.engine = []#["CF","CFnorm","min","random"]                      
 		self.n = 5                          # Top-n similar used in collaborative filter
 		
 		# Choice model
 		# the higher the k the the consumer prefers closest products
-		self.k = 10                          # Constant used in similarity function,  10 from paper
-
-		# Salience
+		self.k = 5                          # Constant used in similarity function,  10 from paper
 		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
 
 		# Awareness, setting selectes predefined awareness settings
 		self.theta = 0.1                    # Awareness Scaling, .35 in paper
-		self.thetaDot = 0.065
+		self.thetaDot = 0.15
 		self.Lambda = 0.5 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
-		self.rankingDecreasePerIteration = 0.1
+		self.p = 0.1 # slope of salience decrease function
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
-		self.iters1 = [i for i in range(19)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
-		self.iters2 = [i for i in range(10,20)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
-		self.percentageOfActiveUsers = 1.0      # percentage of active users per iteration, set 1 to agree with paper 
-		self.percentageOfActiveItems = 0.032     # percentage of active items per iteration, set 1 to agree with paper         
-		self.moveAsDistancePercentage = 0.1    # the amount of distance covered when a user move towards an item 
+		self.iters1 = [i for i in range(40)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
+		self.iters2 = [i for i in range(20,40)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
+		        
+		
 		self.userVarietySeeking = []
 		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
-		self.categoriesSalience = [1,0.7,0.8,0.6,0.9] # arbitrary assigned
+		self.categoriesSalience = [1,1,1,1,1] # arbitrary assigned
 		self.Pickle = []
 
 	# Create an instance of simulation based on the parameters
 	def createSimulationInstance(self, seed = None):
 		random.seed(seed)
 
-		''' 
-			Item related paremeterizations:
-			Items are grouped into classes corresponding to their news topic. Currently they are generated
-			as 2d guassian distributions roughly centered around (0, 0). Later their 2d distribution should
-			be based on PCA/t-sne feature reduction on real life data. New items appear at each iteration 
-			but instead of generating new items we generate all of them at the beginning, and adjust their 
-			availability at each iteration. Items also have a limited lifespan. Items have energy also.
-		'''
 		# generate items products
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
 		print(set(labels))
-		gmm = GaussianMixture(n_components=5).fit(X)
+		gmm = GaussianMixture(n_components=5, random_state=seed).fit(X)
 		samples_,self.ItemsClass = gmm.sample(self.I)
 		self.Items = samples_/55  # scale down to -1, 1 range
 		self.ItemFeatures = gmm.predict_proba(samples_)
@@ -90,32 +87,24 @@ class simulation(object):
 		# create timer matrix (lifespan) for item availability
 		L = np.array([1 for i in range(self.I)])
 
-		# distance of products from origin, remains fixed for each engine
-		# self.Do = spatial.distance.cdist([[0,0]], self.Items)[0] 
-
 		# item ranking
 		self.initialR = np.zeros(self.I)
 		for i in range(5):
 			indeces = np.where(self.ItemsClass==i)[0]
 			lower, upper = 0, 1
-			mu, sigma = self.categoriesSalience[i], 0.15
+			mu, sigma = self.categoriesSalience[i], 0.25
 			X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
 			self.initialR[indeces] = X.rvs(len(indeces))
-			# fig, ax = plt.subplots(2, sharex=True)
-			# ax[0].hist(self.initialR[indeces], normed=True)
-			# plt.show()
+			fig, ax = plt.subplots(2, sharex=True)
+			ax[0].hist(self.initialR[indeces], normed=True)
+			plt.show()
 			
-			 	
-		''' 
-			User related paremeterizations:
-			Currently users are generated as a 2d gaussian around the center (0, 0). A uniform distribution
-			should be later used.
-		'''
+
 		# Generate users/customers
 		self.Users = np.random.uniform(-1,1,(self.A,2))
 
 		# size of session per user (e.g. amount of articles read per day)
-		self.UserSessionSize = [1 for i in range(self.A)]
+		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.A)]
 		print(self.UserSessionSize)
 
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
@@ -165,40 +154,47 @@ class simulation(object):
 		return W,W2,W3
 
 	# Probabilistic choice model
-	def ChoiceModel(self, eng, user, Rec, w, control = False):
+	def ChoiceModel(self, eng, user, Rec, w, control = False, sessionSize =1):
 
-		# Distances = self.Data[eng]["D"][user,:]
-		# Similarity = np.power(Distances,-self.k)
-		#Similarity = -self.k*np.log(Distances).  # this one!!!
-		# V = 1*Similarity #+ varBeta*smoothhist
+		Distances = self.Data[eng]["D"][user,:]
+		Similarity = -self.k*np.log(Distances)  
 
-		# if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
+		#V = Similarity/np.sum(Similarity)
+		V = Similarity.copy()
+
+		if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
+
+		# Introduce the stochastic component
+		E = -np.log(-np.log([random.random() for v in range(len(V))]))
+		U = V + E
+		sel = np.where(w==1)[0]
+
+		# with stochastic
+		selected = np.argsort(U[sel])[::-1]
 		
-		# # Introduce the stochastic component
-		# R = [random.random() for v in range(len(V))]
-		# E = -np.log(-np.log(R))
-		# U = V + E
-		# sel = np.where(w==1)[0]
-		# mx = np.argmax(U[sel])
-		# i = sel[mx]
-		if random.random()<0.3 and w[Rec]==1 and not control: return Rec
+		# without stochastic
+		selectedW = np.argsort(V[sel])[::-1]
+		return sel[selected[:sessionSize]],sel[selectedW[:sessionSize]]
 
-		# random choice
-		sel = np.where(w==1)[0].tolist()
-		random.shuffle(sel)
-		return sel[0] # index of chosen item
+		randomChoice = False
+		if randomChoice:
+			sel = np.where(w==1)[0].tolist()
+			random.shuffle(sel)
+			selected = sel[:sessionSize]
+		return selected, selected # index of chosen item
 
 	# Compute new position of a user given they purchased an item
-	def computeNewPositionOfUserToItem(self, eng, user, indexOfChosenItem, iteration):
+	def computeNewPositionOfUserToItem(self, eng, user, indecesOfChosenItems, iteration):
 		# compute new user location. But the probability that the user will move towards
 		# the item is proportional to their distance
-		dist = self.Data[eng]["D"][user,indexOfChosenItem]
-		p = np.exp(-(np.power(dist,2))/(self.userVarietySeeking[user])) # based on the awareness formula
-		B = np.array(self.Data[eng]["Users"][user])
-		P = np.array(self.Items[indexOfChosenItem])
-		BP = P - B
-		x,y = B + self.moveAsDistancePercentage*(random.random()<p)*BP 	# probabilistic
-		self.Data[eng]["Users"][user] = [x,y]
+		for indexOfChosenItem in indecesOfChosenItems:
+			dist = spatial.distance.cdist([self.Data[eng]["Users"][user]], [self.Items[indexOfChosenItem]])[0]
+			p = np.exp(-(np.power(dist,2))/(self.userVarietySeeking[user])) # based on the awareness formula
+			B = np.array(self.Data[eng]["Users"][user])
+			P = np.array(self.Items[indexOfChosenItem])
+			BP = P - B
+			x,y = B + self.m*(random.random()<p)*BP 	# probabilistic
+			self.Data[eng]["Users"][user] = [x,y]
 		self.Data[eng]["X"][user,iteration] = x
 		self.Data[eng]["Y"][user,iteration] = y
 
@@ -209,7 +205,7 @@ class simulation(object):
 	'''
 	def rankingFunction(self, currentRanking, life):
 		x = life
-		y = (-0.1*x+1)*currentRanking
+		y = (-self.p*x+1)*currentRanking
 		return max([y, 0])
 
 	def addedFunctionalitiesAfterIteration(self, eng, activeItemIndeces):
@@ -281,13 +277,10 @@ class simulation(object):
 				for i in range(1,10):
 					indeces = np.where(self.Data[eng]["ItemLifespan"]==i)[0]
 					A = Awareness[:,indeces]
-					print("    Mean #aware of age",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
-				 
-				
-				# print("    Mean #aware of:",np.mean(np.sum(Awareness,axis=1)),"Mean #aware of before:",np.mean(np.sum(Before,axis=1)))
-				# print("    Mean #aware of popularity:",np.mean(np.sum(AwarenessOnlyPopular,axis=1)),"Mean #aware of proximity:",np.mean(np.sum(AwarenessProximity,axis=1)))
-				# print("    Mean lifespan of available items:",np.mean(self.Data[eng]["ItemLifespan"][activeItemIndeces]))
-				# print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
+					print("    Percentage aware of age",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
+				print("    Median #aware of:",np.median(np.sum(Awareness,axis=1)))
+				print("    Mean aware_score of popularity:",np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)),"Mean aware_score of proximity:",np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))
+				print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
 				
 
 				# for each active user
@@ -297,42 +290,38 @@ class simulation(object):
 					# the recommendation stays the same for every session per user	
 					if eng is not "Control":
 						# recommend one of the available items
-						Rec = activeItemIndeces[self.recengine(eng, user, activeItemIndeces)] 	
+						Rec = np.array(activeItemIndeces)[self.recengine(eng, user, activeItemIndeces)] 	
+						
 						# temporary adjust awareness for that item-user pair
 						Awareness[user, Rec] = 1				
 
 						# if the user has already purchased the item then decrease awareness of the recommendation
-						if 	self.Data[eng]["Sales History"][user,Rec]>0: Awareness[user, Rec] = 0		
-						
-					# for each article to be read in the user's session
-					for readingItem in range(self.UserSessionSize[user]): 
-						
-						# pick article to read
-						if eng == "Control": Rec=-1
-						indexOfChosenItem =  self.ChoiceModel(eng, user, Rec, Awareness[user,:], control = eng=="Control")
+						Awareness[user, np.where(self.Data[eng]["Sales History"][user,Rec]>0)[0] ] = 0		
+					else:	
+						Rec=np.array([-1])
 
-						# make sure it's not read again in that session
-						Awareness[user, indexOfChosenItem] = 0
+					# select articles
+					indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(eng, user, Rec, Awareness[user,:], control = eng=="Control", sessionSize = self.UserSessionSize[user])
+					#print(indecesOfChosenItems)
 
-						# add item purchase to histories
-						self.Data[eng]["Sales History"][user, indexOfChosenItem] += 1		
-						self.Data[eng]["All Purchased Items"].append(indexOfChosenItem)		
+					# add item purchase to histories
+					self.Data[eng]["Sales History"][user, indecesOfChosenItems] += 1		
+					[self.Data[eng]["All Purchased Items"].append(i) for i in indecesOfChosenItems]		
 
-						# compute new user position (we don't store the position in the session, only after it is over)
-						self.computeNewPositionOfUserToItem(eng, user, indexOfChosenItem, epoch_index)
+					# compute new user position (we don't store the position in the session, only after it is over)
+					self.computeNewPositionOfUserToItem(eng, user, indecesOfChosenItems, epoch_index)
 
-						# store some data for stats
-						# typeOf = "None"
-						# if indexOfChosenItem in np.where(AwarenessProximity[user,:]==1)[0]: typeOf = "inProximity"
-						# if indexOfChosenItem in np.where(AwarenessOnlyPopular[user,:]==1)[0]: typeOf = "inPopular"
-						if epoch>9:
-							self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemRanking"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem == Rec ])
+					# store some data for analysis
+					if epoch>9:
+						for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
+							indexOfChosenItemW = indecesOfChosenItemsW[i]
+							self.Pickle.append([epoch_index, user, eng ,indexOfChosenItem,self.Data[eng]["ItemLifespan"][indexOfChosenItem], self.Data[eng]["ItemRanking"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW ])
 						
 				# after each iteration	
 				self.addedFunctionalitiesAfterIteration(eng, activeItemIndeces)
 
 		# store
-		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended"])
+		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","chosenItem_vs_chosenWithoutStochastic"])
 		df.to_pickle("temp/history.pkl")
 		pickle.dump(self.Data, open("temp/Data.pkl", "wb"))
 					
@@ -363,7 +352,7 @@ class simulation(object):
 				topN = np.argsort(s)[::-1][:self.n] # top N users
 				# Recommend the most common item among those n users
 				SubP = P[topN,:]
-				Recommendation = np.argsort(np.sum(SubP,axis=0))[::-1][0]
+				Recommendation = np.argsort(np.sum(SubP,axis=0))[::-1][:self.n]
 
 		if engine=="CFnorm": #CF with discounted argmax i.e. normalized by the sum of the product sales
 			norms = np.sqrt(np.sum(np.power(P,2),axis=1))
@@ -386,27 +375,27 @@ class simulation(object):
 
 				allSales = np.sum(P,axis=0)
 				allSales[np.where(allSales==0)[0]]=1 # diving by one won't change results
-				Recommendation = np.argsort(np.sum(SubP,axis=0)/allSales)[::-1][0]
+				Recommendation = np.argsort(np.sum(SubP,axis=0)/allSales)[::-1][:self.n]
 			
 		if engine=="min":		# lowest seller
 			sales = np.sum(P, axis=0)
-			Recommendation = np.argmin(sales)
+			Recommendation = np.argsort(sales)[:self.n]
 
 		if engine=="median":		# median seller
 			sales = np.sum(P, axis=0)
 			v = np.argsort(sales).tolist()
-			Recommendation = v[int(len(v)/2)]
+			Recommendation = v[int(len(v)/2):int(len(v)/2)+self.n]
 
 		if engine=="max":		# highest seller
 			sales = np.sum(P, axis=0)
-			Recommendation = np.argmax(sales)
+			Recommendation = np.argmax(sales)[:self.n]
 
 		if engine=="top5":		# Top-5 sellers
 			sales = np.sum(P, axis=0)
 			Recommendation = np.argsort(sales)[::-1][:5]
 			
 		if engine=="random":		# random
-			Recommendation = int(random.random()*P.shape[1])
+			Recommendation = [int(random.random()*P.shape[1]) for i in range(self.n)]
 
 		return Recommendation
 
@@ -436,7 +425,7 @@ class simulation(object):
 		f, ax = plt.subplots(1,1, figsize=(6,6))
 		if not forUser:
 			for i in range(self.A):
-				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[i],edgecolors="k",linewidths=0.5)
+				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=1,edgecolors="k",linewidths=0.5)
 			for i in range(self.I):
 				color = flatui[self.ItemsClass[i]]
 				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialR[i], alpha =0.8)	

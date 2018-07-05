@@ -54,6 +54,12 @@ plt.show()
 # plt.show()
 
 # purchases per salience
+g = sns.factorplot(y="chosenItem_vs_chosenWithoutStochastic",x="engine", kind="bar", data=df, capsize=.2, palette="YlGnBu_d", size=6, aspect=.75,  legend = True)
+g.despine(left=True)
+# df.plot.box()
+plt.show()
+
+# purchases per salience
 g = sns.factorplot(y="inverseSalience",x="engine", kind="bar", data=df, capsize=.2, palette="YlGnBu_d", size=6, aspect=.75,  legend = True)
 g.despine(left=True)
 # df.plot.box()
