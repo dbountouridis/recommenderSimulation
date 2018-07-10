@@ -2,6 +2,7 @@ from __future__ import division
 import numpy as np
 from scipy import spatial
 from scipy import stats
+from scipy.stats import norm
 import random
 import time
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ import pickle
 import networkx as nx
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.mixture import GaussianMixture
+import os
 
 
 __author__ = 'Dimitrios  Bountouridis'
@@ -34,39 +36,62 @@ class simulation(object):
 	def __init__(self):
 		# Default settings
 		# Inputs: users
-		self.A = 200                        # Agents, users
+		self.A = 100                        # Agents, users
 		self.percentageOfActiveUsers = 1.0 # percentage of active users per iteration
 		self.m = 0.05    # the amount of distance covered when a user move towards an item 
 
 		# Inputs: articles
 		self.totalDaysIterations = 40
-		self.newArticlesPerDay = 150
+		self.newArticlesPerDay = 100
 		self.I = self.totalDaysIterations*self.newArticlesPerDay                    
 		self.percentageOfActiveItems = self.newArticlesPerDay/self.I  
 		
-		self.engine = []#["CF","CFnorm","min","random"]                      
+		self.engine = ["BPRMF"] #"max","random"]#["CF","CFnorm","min","random"]                      
 		self.n = 5                          # Top-n similar used in collaborative filter
 		
 		# Choice model
 		# the higher the k the the consumer prefers closest products
-		self.k = 5                          # Constant used in similarity function,  10 from paper
+		self.k = 14                          # Constant used in similarity function,  10 from paper
 		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
 
 		# Awareness, setting selectes predefined awareness settings
 		self.theta = 0.1                    # Awareness Scaling, .35 in paper
-		self.thetaDot = 0.15
+		self.thetaDot = 0.5
 		self.Lambda = 0.5 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
 		self.p = 0.1 # slope of salience decrease function
 
 		# Iterations (for baseline iters1, and with recommenders on iters2)
-		self.iters1 = [i for i in range(40)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
+		self.iters1 = [i for i in range(20)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
 		self.iters2 = [i for i in range(20,40)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
 		        
 		
 		self.userVarietySeeking = []
 		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
-		self.categoriesSalience = [1,1,1,1,1] # arbitrary assigned
+		self.categoriesSalience = [0.07,0.05,0.85,0.03,0.01] # arbitrary assigned
 		self.Pickle = []
+
+	def exportToMMLdocuments(self, eng = False, permanent = True, activeItemIndeces = False):
+
+		# Export only the files that remain the same throughout the simulation
+		if not eng:
+			np.savetxt("mmlDocuments/users.csv", np.array([i for i in range(self.A)]), delimiter=",", fmt='%d')
+
+		if activeItemIndeces:
+			P = self.Data[eng]["Sales History"]
+			p = np.where(P>=1)
+			z = zip(p[0],p[1])
+			l = [[i,j] for i,j in z if j in activeItemIndeces]
+			np.savetxt("mmlDocuments/positive_only_feedback.csv", np.array(l), delimiter=",", fmt='%d')
+
+		# export the active items, or all of them if activeItemIndeces is empty
+		if not activeItemIndeces: activeItemIndeces = [i for i in range(self.I)]
+		d = []
+		for i in activeItemIndeces:
+			feat = np.where(self.ItemFeatures[i]/np.max(self.ItemFeatures[i])>0.33)[0]
+			for f in feat: d.append([int(i),int(f)])
+		np.savetxt("mmlDocuments/items_attributes.csv", np.array(d), delimiter=",", fmt='%d')
+
+				
 
 	# Create an instance of simulation based on the parameters
 	def createSimulationInstance(self, seed = None):
@@ -74,11 +99,18 @@ class simulation(object):
 
 		# generate items products
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
-		print(set(labels))
 		gmm = GaussianMixture(n_components=5, random_state=seed).fit(X)
 		samples_,self.ItemsClass = gmm.sample(self.I)
 		self.Items = samples_/55  # scale down to -1, 1 range
 		self.ItemFeatures = gmm.predict_proba(samples_)
+
+
+		dist = spatial.distance.cdist(self.Items, self.Items)[0]
+		(mu, sigma) = norm.fit(dist)
+		print(mu, sigma)
+		fig, ax = plt.subplots(2, sharex=True)
+		ax[0].hist(dist, normed=True)
+		plt.show()
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
@@ -89,15 +121,19 @@ class simulation(object):
 
 		# item ranking
 		self.initialR = np.zeros(self.I)
+		fig, ax = plt.subplots()
 		for i in range(5):
 			indeces = np.where(self.ItemsClass==i)[0]
 			lower, upper = 0, 1
-			mu, sigma = self.categoriesSalience[i], 0.25
-			X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+			mu, sigma = self.categoriesSalience[i], 0.1
+			a = (lower - mu) / sigma
+			b=  (upper - mu) / sigma
+			X = stats.truncnorm( a, b, loc=mu, scale=sigma)
 			self.initialR[indeces] = X.rvs(len(indeces))
-			fig, ax = plt.subplots(2, sharex=True)
-			ax[0].hist(self.initialR[indeces], normed=True)
-			plt.show()
+			
+			x = np.linspace(0,1)
+			ax.plot(x, X.pdf(x)/np.sum(x),'r-', lw=1, alpha=0.6, label=self.categories[i])
+		plt.show()
 			
 
 		# Generate users/customers
@@ -134,6 +170,9 @@ class simulation(object):
 			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
 			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
+		# this will export the users once for MML
+		self.exportToMMLdocuments(permanent=True)
+
 	# Make awareness matrix
 	def makeawaremx(self,eng):
 		random.seed(1)
@@ -144,8 +183,12 @@ class simulation(object):
 		W3 = W.copy()
 		for a in range(self.A):
 			for i in range(self.I):
-				W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemRanking"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemRanking"][i],2))) 
+				# W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemRanking"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				# W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemRanking"][i],2))) 
+				# W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+
+				W[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data[eng]["ItemRanking"][i])) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				W2[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data[eng]["ItemRanking"][i])) 
 				W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
 				r = random.random()
 				W[a,i] = r<W[a,i] # probabilistic
@@ -278,27 +321,37 @@ class simulation(object):
 					indeces = np.where(self.Data[eng]["ItemLifespan"]==i)[0]
 					A = Awareness[:,indeces]
 					print("    Percentage aware of age",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
+				for i in range(5):
+					indeces = np.where(self.ItemsClass==i)[0]
+					A = Awareness[:,indeces]
+					print("    Percentage aware of class",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
 				print("    Median #aware of:",np.median(np.sum(Awareness,axis=1)))
 				print("    Mean aware_score of popularity:",np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)),"Mean aware_score of proximity:",np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))
 				print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
 				
+				# export for medialite
+				if eng is not "Control":
+					self.exportToMMLdocuments(eng = eng, permanent = False, activeItemIndeces = activeItemIndeces)
+
+					# recommend using mediaLite
+					recommendations = self.mmlRecommendation(eng)			
 
 				# for each active user
 				for user in activeUserIndeces:
 					# if epoch>1: self.simplePlot(forUser = user, awareness = Awareness[user, :], active = activeItemIndeces)
 
 					# the recommendation stays the same for every session per user	
+					Rec=np.array([-1])
 					if eng is not "Control":
-						# recommend one of the available items
-						Rec = np.array(activeItemIndeces)[self.recengine(eng, user, activeItemIndeces)] 	
-						
+						# recommend one of the available items, old version
+						#Rec = np.array(activeItemIndeces)[self.recengine(eng, user, activeItemIndeces)] 
+						Rec = recommendations[user]
+							
 						# temporary adjust awareness for that item-user pair
 						Awareness[user, Rec] = 1				
 
-						# if the user has already purchased the item then decrease awareness of the recommendation
+						# if the user has been already purchased the item then decrease awareness of the recommendation
 						Awareness[user, np.where(self.Data[eng]["Sales History"][user,Rec]>0)[0] ] = 0		
-					else:	
-						Rec=np.array([-1])
 
 					# select articles
 					indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(eng, user, Rec, Awareness[user,:], control = eng=="Control", sessionSize = self.UserSessionSize[user])
@@ -324,7 +377,32 @@ class simulation(object):
 		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","chosenItem_vs_chosenWithoutStochastic"])
 		df.to_pickle("temp/history.pkl")
 		pickle.dump(self.Data, open("temp/Data.pkl", "wb"))
-					
+		
+	# MML recommendation
+	def mmlRecommendation(self, eng):
+		post = ""
+		if eng == "max": engine ="MostPopular"
+		if eng == "random": engine="Random"
+		if eng == "BPRMF": 
+			engine='BPRMF'
+			#post = "num_factors=10 bias_reg=0 reg_u=0.0025 reg_i=0.0025 reg_j=0.00025 num_iter=30 learn_rate=0.05 uniform_user_sampling=True with_replacement=False update_j=True"
+
+		command = "mono mmlDocuments/item_recommendation.exe --training-file=mmlDocuments/positive_only_feedback.csv --item-attributes=mmlDocuments/items_attributes.csv --recommender="+engine+"  --predict-items-number="+str(self.n)+" --prediction-file=mmlDocuments/output.txt "+post
+		os.system(command)
+		#print("MML executed")
+		f = open("mmlDocuments/output.txt","r").read() 
+		f = f.split("\n")
+		recommendations = {}
+		for line in f[:-1]:
+			#if len(line)<1:continue
+			l = line.split("\t")
+			user_id = int(l[0])
+			l1 = l[1].replace("[","").replace("]","").split(",")
+			rec = [int(i.split(":")[0]) for i in l1]
+			recommendations.update({user_id:rec})
+		return recommendations 
+
+
 	# Recommendation algorithms (engines)
 	def recengine(self, engine, a, activeItemIndeces):
 
