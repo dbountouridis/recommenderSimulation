@@ -13,6 +13,7 @@ import networkx as nx
 from sklearn.datasets.samples_generator import make_blobs
 from sklearn.mixture import GaussianMixture
 import os
+import sys, getopt
 
 
 __author__ = 'Dimitrios  Bountouridis'
@@ -124,9 +125,9 @@ class simulation(object):
 
 		# Generate users/customers
 		# from uniform
-		#self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
+		self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
 		# from bivariate
-		self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=seed)
+		#self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=seed)
 		
 		# size of session per user (e.g. amount of articles read per day)
 		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.totalNumberOfUsers)]
@@ -663,13 +664,38 @@ class simulation(object):
 
 # 
 def main(argv):
-    
-    print("Initialize simulation class...")
+	helpText = 'simulationClass.py  -i <iterations> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders>'
+	try:
+		opts, args = getopt.getopt(argv,"hi:s:u:d:r:")
+	except getopt.GetoptError:
+		print(helpText)
+		sys.exit(2)
+	for opt, arg in opts:
+		if opt == '-h':
+			print(helpText)
+			sys.exit()
+		elif opt in ("-u"):
+			totalNumberOfUsers = arg
+		elif opt in ("-i"):
+			totalNumberOfIterations = arg
+		elif opt in ("-s"):
+			seed = arg
+		elif opt in ("-d"):
+			delta = arg
+		elif opt in ("-r"):
+			recommenders = arg
+	
+	print("Initialize simulation class...")
 	sim = simulation()
-	sim.delta = delta
+	sim.delta = int(delta)
+	sim.totalNumberOfUsers = int(totalNumberOfUsers)
+	sim.engine = recommenders.split(",")
+	sim.totalNumberOfIterations = int(totalNumberOfIterations)
+	
 	print("Create simulation instance...")
-	sim.createSimulationInstance(seed = i+3)
-	#sim.simplePlot()
+	sim.createSimulationInstance(seed = int(seed))
+	sim.simplePlot()
+	
 	print("Run simulation...")
 	sim.runSimulation()
 	#print("Plotting...")
