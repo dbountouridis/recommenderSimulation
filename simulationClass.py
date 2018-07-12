@@ -30,98 +30,85 @@ def gini(x):
 	G = absdif/(2*np.power(n,2)*xbar) * (n/(n)) # change to n/(n-1) for unbiased
 	return G
 
-
-
 class simulation(object):
 	def __init__(self):
 		# Default settings
-		# Inputs: users
-		self.A = 100                        # Agents, users
-		self.percentageOfActiveUsers = 1.0 # percentage of active users per iteration
-		self.m = 0.05    # the amount of distance covered when a user move towards an item 
+		
+		# Total number of users
+		self.totalNumberOfUsers = 150                        
+		self.percentageOfActiveUsersPI = 1.0 
+		
+		# Amount of distance covered when a user move towards an item 
+		self.m = 0.05    
 
 		# Inputs: articles
-		self.totalDaysIterations = 40
-		self.newArticlesPerDay = 100
-		self.I = self.totalDaysIterations*self.newArticlesPerDay                    
-		self.percentageOfActiveItems = self.newArticlesPerDay/self.I  
+		self.totalNumberOfIterations = 40
+		self.numberOfNewItemsPI = 100
+		self.I = self.totalNumberOfIterations*self.numberOfNewItemsPI                    
+		self.percentageOfActiveItems = self.numberOfNewItemsPI/self.I  
 		
-		self.engine = ["BPRMF"] #"max","random"]#["CF","CFnorm","min","random"]                      
-		self.n = 5                          # Top-n similar used in collaborative filter
+		# Recommendation engines
+		self.engine = ["BPRMF"] #"max","ItemAttributeKNN","random"]
+		
+		# Division of iterations per control period vs the rest
+		self.iterationSplit = 0.5 
+		self.iters1 = [i for i in range(int(self.totalNumberOfIterations*self.iterationSplit))] 
+		self.iters2 = [i for i in range(int(self.totalNumberOfIterations*self.iterationSplit),self.totalNumberOfIterations)]              
+		
+		# Number of recommended items per iteration per user
+		self.n = 5                          
 		
 		# Choice model
-		# the higher the k the the consumer prefers closest products
-		self.k = 14                          # Constant used in similarity function,  10 from paper
-		self.delta = 5                       # Factor by which distance decreases for recommended product, 5 default
+		self.k = 14                          
+		self.delta = 5                     
 
 		# Awareness, setting selectes predefined awareness settings
-		self.theta = 0.1                    # Awareness Scaling, .35 in paper
+		self.theta = 0.1      
 		self.thetaDot = 0.5
-		self.Lambda = 0.5 					# This is crucial since it controls how much the users focus on mainstream items, 0.75 default value (more focused on mainstream)
-		self.p = 0.1 # slope of salience decrease function
-
-		# Iterations (for baseline iters1, and with recommenders on iters2)
-		self.iters1 = [i for i in range(20)]        # Length of period without recommendations (all agents make 1 purchase/iteration)
-		self.iters2 = [i for i in range(20,40)]     # Length of period with recommendations (uses sales data left at end of Iters1)        
-		        
+		self.Lambda = 0.5 
 		
+		# slope of salience decrease function
+		self.p = 0.1 
+		      	        
 		self.userVarietySeeking = []
-		self.categories = ["business", "entertainment", "politics", "sport", "tech"]          
-		self.categoriesSalience = [0.07,0.05,0.85,0.03,0.01] # arbitrary assigned
+		self.categories = ["entertainment","business","sport","politics","tech"]
+		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
 		self.Pickle = []
-
-	def exportToMMLdocuments(self, eng = False, permanent = True, activeItemIndeces = False):
-
-		# Export only the files that remain the same throughout the simulation
-		if not eng:
-			np.savetxt("mmlDocuments/users.csv", np.array([i for i in range(self.A)]), delimiter=",", fmt='%d')
-
-		if activeItemIndeces:
-			P = self.Data[eng]["Sales History"]
-			p = np.where(P>=1)
-			z = zip(p[0],p[1])
-			l = [[i,j] for i,j in z if j in activeItemIndeces]
-			np.savetxt("mmlDocuments/positive_only_feedback.csv", np.array(l), delimiter=",", fmt='%d')
-
-		# export the active items, or all of them if activeItemIndeces is empty
-		if not activeItemIndeces: activeItemIndeces = [i for i in range(self.I)]
-		d = []
-		for i in activeItemIndeces:
-			feat = np.where(self.ItemFeatures[i]/np.max(self.ItemFeatures[i])>0.33)[0]
-			for f in feat: d.append([int(i),int(f)])
-		np.savetxt("mmlDocuments/items_attributes.csv", np.array(d), delimiter=",", fmt='%d')
-
-				
-
+			
 	# Create an instance of simulation based on the parameters
 	def createSimulationInstance(self, seed = None):
 		random.seed(seed)
 
-		# generate items products
+		# Generate items/articles from the BBC data
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
-		gmm = GaussianMixture(n_components=5, random_state=seed).fit(X)
+		gmm = GaussianMixture(n_components=5, random_state=2).fit(X)
 		samples_,self.ItemsClass = gmm.sample(self.I)
 		self.Items = samples_/55  # scale down to -1, 1 range
 		self.ItemFeatures = gmm.predict_proba(samples_)
 
+		# Spearman correlation test between feature representations
+		# dist = spatial.distance.cdist(self.Items, self.Items)[0]
+		# dist2 = spatial.distance.cdist(self.ItemFeatures, self.ItemFeatures)[0]
+		# print(stats.pearsonr(dist,dist2))
+		# print(stats.spearmanr(dist,dist2))
 
-		dist = spatial.distance.cdist(self.Items, self.Items)[0]
-		(mu, sigma) = norm.fit(dist)
-		print(mu, sigma)
-		fig, ax = plt.subplots(2, sharex=True)
-		ax[0].hist(dist, normed=True)
-		plt.show()
+		# Fitting a guassian on the pairwise item distances
+		# (mu, sigma) = norm.fit(dist)
+		# print(mu, sigma)
+		# fig, ax = plt.subplots(2, sharex=True)
+		# ax[0].hist(dist, normed=True)
+		# plt.show()
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
 		random.shuffle(self.itemOrderOfAppearance)
 
-		# create timer matrix (lifespan) for item availability
+		# create initial lifespan for item availability
 		L = np.array([1 for i in range(self.I)])
 
-		# item ranking
+		# Item salience based on topic salience and truncated normal distibution
 		self.initialR = np.zeros(self.I)
-		fig, ax = plt.subplots()
+		#fig, ax = plt.subplots()
 		for i in range(5):
 			indeces = np.where(self.ItemsClass==i)[0]
 			lower, upper = 0, 1
@@ -130,47 +117,48 @@ class simulation(object):
 			b=  (upper - mu) / sigma
 			X = stats.truncnorm( a, b, loc=mu, scale=sigma)
 			self.initialR[indeces] = X.rvs(len(indeces))
-			
-			x = np.linspace(0,1)
-			ax.plot(x, X.pdf(x)/np.sum(x),'r-', lw=1, alpha=0.6, label=self.categories[i])
-		plt.show()
+			#x = np.linspace(0,1)
+			#ax.plot(x, X.pdf(x)/np.sum(x),'r-', lw=1, alpha=0.6, label=self.categories[i])
+		#plt.show()
 			
 
 		# Generate users/customers
-		self.Users = np.random.uniform(-1,1,(self.A,2))
-
+		# from uniform
+		#self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
+		# from bivariate
+		self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=seed)
+		
 		# size of session per user (e.g. amount of articles read per day)
-		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.A)]
+		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.totalNumberOfUsers)]
 		print(self.UserSessionSize)
 
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
-		# Normal distribution centered around 0.5
+		# Normal distribution centered around 0.05
 		lower, upper = 0, 1
 		mu, sigma = 0.05, 0.05
 		X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
-		self.userVarietySeeking = X.rvs(self.A)
+		self.userVarietySeeking = X.rvs(self.totalNumberOfUsers)
 		# print(self.userVarietySeeking)
 		# fig, ax = plt.subplots(2, sharex=True)
 		# ax[0].hist(self.userVarietySeeking, normed=True)
 		# plt.show()
 
-
-		P = np.zeros([self.A,self.I]) 	# Purchases, sales history
-		H = P.copy() 	 				# Loyalty histories
+		# Purchases, sales history
+		P = np.zeros([self.totalNumberOfUsers,self.I]) 	
 	
 		# Create distance matrices
-		D = spatial.distance.cdist(self.Users, self.Items)			# distance of products from users
+		D = spatial.distance.cdist(self.Users, self.Items)			
 		
 		# Store everything in a dictionary structure
 		self.Data = {}
 		for eng in self.engine+["Control"]:
 			if eng=="Control": iters = self.iters1
 			else: iters = self.iters2
-			self.Data.update({eng:{"ItemRanking":self.initialR.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"H" : H.copy(),"Iterations" : iters,"X" : np.zeros([self.A,len(iters)]),"Y" : np.zeros([self.A,len(iters)])}})
+			self.Data.update({eng:{"ItemRanking":self.initialR.copy(), "Sales History" : P.copy(),"All Purchased Items" : [],"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"Iterations" : iters,"X" : np.zeros([self.totalNumberOfUsers,len(iters)]),"Y" : np.zeros([self.totalNumberOfUsers,len(iters)])}})
 			self.Data[eng]["X"][:,0] = self.Data[eng]["Users"][:,0]
 			self.Data[eng]["Y"][:,0] = self.Data[eng]["Users"][:,1]
 
-		# this will export the users once for MML
+		# Export the user ids once for MML
 		self.exportToMMLdocuments(permanent=True)
 
 	# Make awareness matrix
@@ -178,10 +166,10 @@ class simulation(object):
 		random.seed(1)
 
 		Dij = self.Data[eng]["D"]
-		W = np.zeros([self.A,self.I])
+		W = np.zeros([self.totalNumberOfUsers,self.I])
 		W2 = W.copy() # for analysis purposes
 		W3 = W.copy()
-		for a in range(self.A):
+		for a in range(self.totalNumberOfUsers):
 			for i in range(self.I):
 				# W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data[eng]["ItemRanking"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
 				# W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data[eng]["ItemRanking"][i],2))) 
@@ -241,11 +229,6 @@ class simulation(object):
 		self.Data[eng]["X"][user,iteration] = x
 		self.Data[eng]["Y"][user,iteration] = y
 
-
-	'''
-		After each iteration the new user to item position is recomputed. Each item's lifespan is also
-		decreased (applies only to those items that were available in the current iteration).
-	'''
 	def rankingFunction(self, currentRanking, life):
 		x = life
 		y = (-self.p*x+1)*currentRanking
@@ -263,18 +246,13 @@ class simulation(object):
 		for a in activeItemIndeces:
 			self.Data[eng]['ItemRanking'][a]= self.rankingFunction(self.initialR[a],self.Data[eng]['ItemLifespan'][a])
 
-
-	'''
-		At the beginning of each iteration only a number of users can be available (currently all of them). 
-		At each iteration new items are becoming available and those with expired lifespan become unavailable.
-	'''
 	def subsetOfAvailableUsersItems(self,iteration, eng):
 		
 		# user availability
-		activeUserIndeces = np.arange(self.A).tolist()
+		activeUserIndeces = np.arange(self.totalNumberOfUsers).tolist()
 		random.shuffle(activeUserIndeces)
-		activeUserIndeces = activeUserIndeces[:int(len(activeUserIndeces)*self.percentageOfActiveUsers)] 
-		nonActiveUserIndeces = [ i  for i in np.arange(self.A) if i not in activeUserIndeces]
+		activeUserIndeces = activeUserIndeces[:int(len(activeUserIndeces)*self.percentageOfActiveUsersPI)] 
+		nonActiveUserIndeces = [ i  for i in np.arange(self.totalNumberOfUsers) if i not in activeUserIndeces]
 
 		# items are gradually (at each iteration) becoming available, but have limited lifspan
 		activeItemIndeces =[j for j in self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)] if self.Data[eng]["ItemRanking"][j]>0]
@@ -291,7 +269,6 @@ class simulation(object):
 			if eng is not "Control":
 				# continue from the Control period history
 				self.Data[eng]["Sales History"] = self.Data["Control"]["Sales History"].copy()
-				self.Data[eng]["H"] = self.Data["Control"]["H"].copy()
 				self.Data[eng]["InitialUsers"] = self.Data["Control"]["Users"].copy() 	# this won't be updated
 				self.Data[eng]["Users"] = self.Data["Control"]["Users"].copy()			# this will be updated
 				self.Data[eng]["ItemLifespan"] = self.Data["Control"]["ItemLifespan"].copy() # this will be updated
@@ -378,13 +355,36 @@ class simulation(object):
 		df.to_pickle("temp/history.pkl")
 		pickle.dump(self.Data, open("temp/Data.pkl", "wb"))
 		
-	# MML recommendation
+	# export to MML type input
+	def exportToMMLdocuments(self, eng = False, permanent = True, activeItemIndeces = False):
+
+		# Export only the files that remain the same throughout the simulation
+		if not eng:
+			np.savetxt("mmlDocuments/users.csv", np.array([i for i in range(self.totalNumberOfUsers)]), delimiter=",", fmt='%d')
+
+		if activeItemIndeces:
+			P = self.Data[eng]["Sales History"]
+			p = np.where(P>=1)
+			z = zip(p[0],p[1])
+			l = [[i,j] for i,j in z if j in activeItemIndeces]
+			np.savetxt("mmlDocuments/positive_only_feedback.csv", np.array(l), delimiter=",", fmt='%d')
+
+		# export the active items, or all of them if activeItemIndeces is empty
+		if not activeItemIndeces: activeItemIndeces = [i for i in range(self.I)]
+		d = []
+		for i in activeItemIndeces:
+			feat = np.where(self.ItemFeatures[i]/np.max(self.ItemFeatures[i])>0.33)[0]
+			for f in feat: d.append([int(i),int(f)])
+		np.savetxt("mmlDocuments/items_attributes.csv", np.array(d), delimiter=",", fmt='%d')
+	
+	# Run MML
 	def mmlRecommendation(self, eng):
 		post = ""
-		if eng == "max": engine ="MostPopular"
-		if eng == "random": engine="Random"
+		if eng == "max": engine = "MostPopular"
+		if eng == "random": engine = "Random"
+		if eng == "ItemAttributeKNN": engine = "ItemAttributeKNN"
 		if eng == "BPRMF": 
-			engine='BPRMF'
+			engine = 'BPRMF'
 			#post = "num_factors=10 bias_reg=0 reg_u=0.0025 reg_i=0.0025 reg_j=0.00025 num_iter=30 learn_rate=0.05 uniform_user_sampling=True with_replacement=False update_j=True"
 
 		command = "mono mmlDocuments/item_recommendation.exe --training-file=mmlDocuments/positive_only_feedback.csv --item-attributes=mmlDocuments/items_attributes.csv --recommender="+engine+"  --predict-items-number="+str(self.n)+" --prediction-file=mmlDocuments/output.txt "+post
@@ -401,7 +401,6 @@ class simulation(object):
 			rec = [int(i.split(":")[0]) for i in l1]
 			recommendations.update({user_id:rec})
 		return recommendations 
-
 
 	# Recommendation algorithms (engines)
 	def recengine(self, engine, a, activeItemIndeces):
@@ -477,11 +476,6 @@ class simulation(object):
 
 		return Recommendation
 
-
-	'''
-		Diversity measure: gini coefficients
-		based on: Kartik Hosanagar, Daniel Fleder (2008)
-	'''
 	def computeGinis(self):
 		GiniPerRec = {}
 		
@@ -502,20 +496,20 @@ class simulation(object):
 		flatui = sns.color_palette("husl", 5)
 		f, ax = plt.subplots(1,1, figsize=(6,6))
 		if not forUser:
-			for i in range(self.A):
-				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=1,edgecolors="k",linewidths=0.5)
 			for i in range(self.I):
 				color = flatui[self.ItemsClass[i]]
 				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialR[i], alpha =0.8)	
+			for i in range(self.totalNumberOfUsers):
+				ax.scatter(self.Users[i,0], self.Users[i,1], marker='+', c='b',s=40,alpha=1,edgecolors="k",linewidths=0.5)
 		else:
-			ax.scatter(self.Users[forUser,0], self.Users[forUser,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[forUser],edgecolors="k",linewidths=0.5)
 			#print(np.where(np.array(awareness)==1)[0])
 			for i in np.where(np.array(awareness)==1)[0]:
 				color = flatui[self.ItemsClass[i]]
 				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=20*self.initialR[i], alpha =1)	
 			for i in np.where(np.array(awareness)==0)[0]:
 				if i in active:
-					ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c='k',s=10*self.initialR[i], alpha =0.1)	
+					ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c='k',s=10*self.initialR[i], alpha =0.1)
+			ax.scatter(self.Users[forUser,0], self.Users[forUser,1], marker='+', c='b',s=40,alpha=self.userVarietySeeking[forUser],edgecolors="k",linewidths=0.5)	
 
 		ax.set_aspect('equal', adjustable='box')
 		plt.tight_layout()
@@ -584,7 +578,7 @@ class simulation(object):
 		f, ax = plt.subplots(1,1+len(self.engine), figsize=(15,6), sharey=True)
 		for p, period in enumerate(["Control"]+self.engine):
 			x = spatial.distance.cdist(self.Data[period]["Users"], self.Data[period]["Users"], metric = "euclidean")
-			iu1 = np.triu_indices(self.A,1)
+			iu1 = np.triu_indices(self.totalNumberOfUsers,1)
 			x = x[iu1]
 			sns.distplot(x.flatten(),ax=ax[p])
 			ax[p].set_xlabel(period)
@@ -595,18 +589,13 @@ class simulation(object):
 		f, ax = plt.subplots(1,1+len(self.engine), figsize=(15,6), sharey=True)
 		for p, period in enumerate(["Control"]+self.engine):
 			x = spatial.distance.cdist(self.Data[period]["Sales History"], self.Data[period]["Sales History"], metric = "cosine")
-			iu1 = np.triu_indices(self.A,1)
+			iu1 = np.triu_indices(self.totalNumberOfUsers,1)
 			x = x[iu1]
 			sns.distplot(x.flatten(),ax=ax[p])
 			ax[p].set_xlabel(period)
 		plt.savefig("plots/users-dist-distribution.pdf")
 		plt.show()
 
-
-	''' 
-		Network based measures of fragmentation
-		based on: Kartik Hosanagar, Daniel Fleder, Dokyun Lee, Andreas Buja (2014)
-	'''
 	def networkAnalysis(self, type = 'preferences'):
 		
 		AverageDistance = {}

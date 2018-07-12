@@ -72,26 +72,27 @@ def plotTopics(X,L,X1,L1,classes):
 		color = sns.color_palette(cmaps[i])[-2]
 		plt.scatter(x_[:,0], x_[:,1], c = color, s=5)
 	ax.set_aspect('equal', adjustable='box')
-	ax.set_xlim([-4,4])
-	ax.set_ylim([-4,4])
+	ax.set_xlim([-1.1,1.1])
+	ax.set_ylim([-1.1,1.1])
 	for i in range(5): # 5 topic spaces
 		indeces=np.where(L==i)[0]
-		x = X[indeces[0]]
+		x = X[indeces[0]][0]
+		y = X[indeces[0]][1]
 		if classes[indeces[0]] == "sport":
-			x = -2.5
-			y = -2
-		if classes[indeces[0]] == "business":
-			x = 2
-			y = -1.5
-		if classes[indeces[0]] == "politics":
-			x = 1
-			y = -2.5
-		if classes[indeces[0]] == "entertainment":
-			x = -2.5
-			y = 2.5
-		if classes[indeces[0]] == "tech":
-			x = 1
-			y = 2.5
+			x -= 0.15
+			y -= 0.6
+		# if classes[indeces[0]] == "business":
+		# 	x = 2
+		# 	y = -1.5
+		# if classes[indeces[0]] == "politics":
+		# 	x = 1
+		# 	y = -2.5
+		# if classes[indeces[0]] == "entertainment":
+		# 	x = -2.5
+		# 	y = 2.5
+		# if classes[indeces[0]] == "tech":
+		# 	x = 1
+		# 	y = 2.5
 		ax.text(x, y, classes[indeces[0]], size=14)
 		
 	plt.show()
@@ -129,12 +130,12 @@ k = 10
 
 if topicSpace:
 	random.seed(1)
-	(X,lab1els,classes) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
-	gmm = GaussianMixture(n_components=5).fit(X)
+	(X,labels,classes) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+	gmm = GaussianMixture(n_components=5, random_state =2).fit(X)
 	samples_,ItemsClass = gmm.sample(1000)
-	Items = samples_/20  # scale down
+	Items = samples_/55  # scale down
 	ItemFeatures = gmm.predict_proba(samples_)
-	plotTopics(np.array(X)/20,np.array(labels),Items,ItemsClass,classes)
+	plotTopics(np.array(X)/55,np.array(labels),Items,ItemsClass,classes)
 
 
 if Vutility:
