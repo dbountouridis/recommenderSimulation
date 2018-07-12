@@ -660,55 +660,24 @@ class simulation(object):
 				
 		return {"Average distance":AverageDistance, "Median degree": MedianDegree, "Deviation": Deviation, "Skewness": Skewness }
 
-# Run simulations
-d = []
-for delta in [10]: # for different types of recommendation salience
-	for i in range(1):
-		# print("Run:",i)
-		
-		print("Initialize simulation class...")
-		sim = simulation()
-		sim.delta = delta
-		print("Create simulation instance...")
-		sim.createSimulationInstance(seed = i+3)
-		sim.simplePlot()
-		# time.sleep(10000)
-		print("Run simulation...")
-		sim.runSimulation()
-		print("=== Analysis ===")
-		print(" Gini coefficients per rec engine:")
-		g = sim.computeGinis()
-		print(g)
-		print(" Network analytics:")
-		n1 = sim.networkAnalysis(type = "purchases")
-		print(n1)
-		n2 = sim.networkAnalysis(type = "preferences")
-		print(n2)
-		print("Plotting...")
-		sim.plot2D(drift = True) # plotting the user drift is time consuming
 
-		# results in array
-		for eng in sim.engine:
-			d.append([eng, delta, g[eng], "Gini" ])
-			d.append([eng, delta, n1["Average distance"][eng], "Average distance Pu" ])
-			d.append([eng, delta, n1["Median degree"][eng], "Median degree Pu" ])
-			d.append([eng, delta, n1["Deviation"][eng], "Deviation Pu" ])
-			d.append([eng, delta, n1["Skewness"][eng], "Skewness Pu" ])
-			d.append([eng, delta, n2["Average distance"][eng], "Average distance Pr" ])
-			d.append([eng, delta, n2["Median degree"][eng], "Median degree Pr" ])
-			d.append([eng, delta, n2["Deviation"][eng], "Deviation Pr" ])
-			d.append([eng, delta, n2["Skewness"][eng], "Skewness Pr" ])
+# 
+def main(argv):
+    
+    print("Initialize simulation class...")
+	sim = simulation()
+	sim.delta = delta
+	print("Create simulation instance...")
+	sim.createSimulationInstance(seed = i+3)
+	#sim.simplePlot()
+	print("Run simulation...")
+	sim.runSimulation()
+	#print("Plotting...")
+	#sim.plot2D(drift = True) # plotting the user drift is time consuming
+   
+    
+if __name__ == "__main__":
+   main(sys.argv[1:])           
 
-#Store as dataframe
-df = pd.DataFrame(d, columns = ["Engine","Delta",'Value',"Metric"])
-print(df)
-print(df.describe())
-df.to_pickle('data.pkl')
-
-df = pd.read_pickle("data.pkl")
-g = sns.factorplot(x="Delta", y="Value", hue="Engine", col="Metric", data=df, capsize=.2, palette="YlGnBu_d", size=6, aspect=.75, sharey = False)
-g.despine(left=True)
-# df.plot.box()
-plt.show()
 
 
