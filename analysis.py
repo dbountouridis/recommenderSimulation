@@ -10,11 +10,23 @@ import pandas as pd
 import pickle
 import networkx as nx
 from sklearn.datasets.samples_generator import make_blobs
+import glob
 
 
 __author__ = 'Dimitrios Bountouridis'
 
-df = pd.read_pickle("temp/history.pkl")
+files = glob.glob("temp//history-*.pkl")
+print(files)
+
+for i,file in enumerate(files):
+	print(i,file)
+	if i==0:
+		df = pd.read_pickle(file)
+		print("h1")
+	else:
+		df_ = pd.read_pickle(file)
+		df = df.append(df_, ignore_index=True)
+		print("h2")
 print(df)
 
 sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})

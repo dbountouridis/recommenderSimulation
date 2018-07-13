@@ -47,9 +47,7 @@ class simulation(object):
 
 		# Inputs: articles
 		self.totalNumberOfIterations = 40
-		self.numberOfNewItemsPI = 100
-		self.I = self.totalNumberOfIterations*self.numberOfNewItemsPI                    
-		self.percentageOfActiveItems = self.numberOfNewItemsPI/self.I  
+		self.numberOfNewItemsPI = 100 
 		
 		# Recommendation engines
 		self.engine = ["BPRMF"] #"max","ItemAttributeKNN","random"]
@@ -72,12 +70,17 @@ class simulation(object):
 		self.userVarietySeeking = []
 		self.categories = ["entertainment","business","sport","politics","tech"]
 		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
-		self.Pickle = []
-			
+		self.pickleForFurtherAnalysis = []
+
+
 	# Create an instance of simulation based on the parameters
 	def createSimulationInstance(self):
 		random.seed(self.seed)
 		np.random.seed(self.seed)
+
+		# compute number of total items in the simulation
+		self.I = self.totalNumberOfIterations*self.numberOfNewItemsPI                    
+		self.percentageOfActiveItems = self.numberOfNewItemsPI/self.I 
 
 		# Generate items/articles from the BBC data
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
@@ -130,8 +133,7 @@ class simulation(object):
 		
 		# size of session per user (e.g. amount of articles read per day)
 		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.totalNumberOfUsers)]
-		print(self.UserSessionSize)
-
+		
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
 		# Normal distribution centered around 0.05
 		lower, upper = 0, 1
@@ -151,12 +153,27 @@ class simulation(object):
 		
 		# Store everything in a dictionary structure
 		self.Data = {}
-		self.Data.update({"ItemRanking":self.initialR.copy(), "Sales History" : P.copy(),"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"Iterations" : self.totalNumberOfIterations,"X" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations]),"Y" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations])})
+		self.Data.update({"ItemProminence":self.initialR.copy(), "Sales History" : P.copy(),"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"Iterations" : self.totalNumberOfIterations,"X" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations]),"Y" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations])})
 		self.Data["X"][:,0] = self.Data["Users"][:,0]
 		self.Data["Y"][:,0] = self.Data["Users"][:,1]
 
 		# Export the user ids once for MML
 		self.exportToMMLdocuments(permanent=True)
+
+	# export users and items as dataframes
+	def exportToDataframe(self):
+
+		UsersDF = pd.DataFrame( list(zip(self.UserSessionSize, self.userVarietySeeking, self.Users[:,0], self.Users[:,1])),columns=["SessionSize","VarietySeeking","X","Y"] )
+		print(UsersDF.describe())
+
+		ItemsDF = pd.DataFrame( list(zip(self.ItemsClass, self.initialR, self.Items[:,0], self.Items[:,1])),columns=["Class","InitialProminence","X","Y"] )
+		print(ItemsDF.describe())
+
+
+	# if a new recommendation engine is set, then delete the data points so far
+	def setEngine(self, engine):
+		self.engine = engine
+		self.pickleForFurtherAnalysis=[]
 
 	# Make awareness matrix
 	def makeawaremx(self):
@@ -169,12 +186,12 @@ class simulation(object):
 		W3 = W.copy()
 		for a in range(self.totalNumberOfUsers):
 			for i in range(self.I):
-				# W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data["ItemRanking"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				# W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data["ItemRanking"][i],2))) 
+				# W[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*(np.power(1-self.Data["ItemProminence"][i],2))) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				# W2[a,i] = self.Lambda*np.exp(-(1/self.thetaDot)*  (np.power(1-self.Data["ItemProminence"][i],2))) 
 				# W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
 
-				W[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data["ItemRanking"][i])) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				W2[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data["ItemRanking"][i])) 
+				W[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data["ItemProminence"][i])) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
+				W2[a,i] = self.Lambda*(-self.thetaDot*np.log(1-self.Data["ItemProminence"][i])) 
 				W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
 				r = random.random()
 				W[a,i] = r<W[a,i] # probabilistic
@@ -231,10 +248,10 @@ class simulation(object):
 		self.Data["X"][user,iteration] = x
 		self.Data["Y"][user,iteration] = y
 
-	# decrease of salience/prominence/ranking
-	def rankingFunction(self, currentRanking, life):
+	# decrease of salience/prominence/prominence
+	def prominenceFunction(self, currentProminence, life):
 		x = life
-		y = (-self.p*x+1)*currentRanking
+		y = (-self.p*x+1)*currentProminence
 		return max([y, 0])
 
 	# temporal adaptations after the end of each iteration
@@ -246,9 +263,9 @@ class simulation(object):
 		# update lifespan of available items
 		self.Data["ItemLifespan"][activeItemIndeces] = self.Data["ItemLifespan"][activeItemIndeces]+1
 		#self.Data["ItemLifespan"][self.Data["ItemLifespan"]<0] = 0 # no negatives	
-		# update ranking based on lifespan, naive
+		# update prominence based on lifespan, naive
 		for a in activeItemIndeces:
-			self.Data['ItemRanking'][a]= self.rankingFunction(self.initialR[a],self.Data['ItemLifespan'][a])
+			self.Data['ItemProminence'][a]= self.prominenceFunction(self.initialR[a],self.Data['ItemLifespan'][a])
 
 	# export the subset of available users and items
 	def subsetOfAvailableUsersItems(self,iteration):
@@ -260,7 +277,7 @@ class simulation(object):
 		nonActiveUserIndeces = [ i  for i in np.arange(self.totalNumberOfUsers) if i not in activeUserIndeces]
 
 		# items are gradually (at each iteration) becoming available, but have limited lifspan
-		activeItemIndeces =[j for j in self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)] if self.Data["ItemRanking"][j]>0]
+		activeItemIndeces =[j for j in self.itemOrderOfAppearance[:(iteration+1)*int(self.I*self.percentageOfActiveItems)] if self.Data["ItemProminence"][j]>0]
 		nonActiveItemIndeces = [ i  for i in np.arange(self.I) if i not in activeItemIndeces]
 		
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
@@ -341,13 +358,13 @@ class simulation(object):
 				# store some data for analysis
 				for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
 					indexOfChosenItemW = indecesOfChosenItemsW[i]
-					self.Pickle.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemRanking"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW ])
+					self.pickleForFurtherAnalysis.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.ItemsClass[indexOfChosenItem],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW ])
 					
 			# after each iteration	
 			self.addedFunctionalitiesAfterIteration( activeItemIndeces)
 
 		# store
-		df = pd.DataFrame(self.Pickle,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","chosenItem_vs_chosenWithoutStochastic"])
+		df = pd.DataFrame(self.pickleForFurtherAnalysis,columns=["iteration","userid","engine","itemid","lifespan","inverseSalience","class","wasRecommended","chosenItem_vs_chosenWithoutStochastic"])
 		df.to_pickle("temp/history-"+self.engine+".pkl")
 		
 	# export to MML type input
@@ -372,16 +389,12 @@ class simulation(object):
 	# Run MML
 	def mmlRecommendation(self):
 		post = ""
-		if self.engine == "max": engine = "MostPopular"
-		if self.engine == "random": engine = "Random"
-		if self.engine == "ItemAttributeKNN": engine = "ItemAttributeKNN"
-		if self.engine == "BPRMF": 
-			engine = 'BPRMF'
-			#post = "num_factors=10 bias_reg=0 reg_u=0.0025 reg_i=0.0025 reg_j=0.00025 num_iter=30 learn_rate=0.05 uniform_user_sampling=True with_replacement=False update_j=True"
 
-		command = "mono mmlDocuments/item_recommendation.exe --training-file=mmlDocuments/positive_only_feedback.csv --item-attributes=mmlDocuments/items_attributes.csv --recommender="+engine+"  --predict-items-number="+str(self.n)+" --prediction-file=mmlDocuments/output.txt "+post
+		# run
+		command = "mono mmlDocuments/item_recommendation.exe --training-file=mmlDocuments/positive_only_feedback.csv --item-attributes=mmlDocuments/items_attributes.csv --recommender="+self.engine+"  --predict-items-number="+str(self.n)+" --prediction-file=mmlDocuments/output.txt "+post
 		os.system(command)
-		#print("MML executed")
+		
+		# parse output
 		f = open("mmlDocuments/output.txt","r").read() 
 		f = f.split("\n")
 		recommendations = {}
@@ -466,9 +479,9 @@ class simulation(object):
 
 # 
 def main(argv):
-	helpText = 'simulationClass.py  -i <iterations> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders>'
+	helpText = 'simulationClass.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder>'
 	try:
-		opts, args = getopt.getopt(argv,"hi:s:u:d:r:")
+		opts, args = getopt.getopt(argv,"hi:s:u:d:r:t:f:")
 	except getopt.GetoptError:
 		print(helpText)
 		sys.exit(2)
@@ -479,11 +492,15 @@ def main(argv):
 		elif opt in ("-u"):
 			totalNumberOfUsers = arg
 		elif opt in ("-i"):
-			totalNumberOfIterations = int(arg)
+			iterationsPerRecommender = int(arg)
 		elif opt in ("-s"):
 			seed = arg
 		elif opt in ("-d"):
 			delta = arg
+		elif opt in ("-t"):
+			newItemsPerIteration = int(arg)
+		elif opt in ("-f"):
+			outfolder = arg
 		elif opt in ("-r"):
 			if "," in arg: recommenders = arg.split(",") 
 			else: recommenders = [arg]
@@ -492,25 +509,28 @@ def main(argv):
 	sim = simulation()
 	sim.delta = int(delta)
 	sim.totalNumberOfUsers = int(totalNumberOfUsers)
+	sim.numberOfNewItemsPI = newItemsPerIteration
 	sim.seed = int(seed)
-	sim.totalNumberOfIterations = totalNumberOfIterations
+	sim.totalNumberOfIterations = iterationsPerRecommender*2 # one for the control and one for each rec
 
 	print("Create simulation instance...")
 	sim.createSimulationInstance()
+	sim.exportToDataframe()
+
 	print("Plotting users/items in 2d space...")
 	sim.simplePlot()
 
 	print("Run Control period...")
-	sim.engine = "Control"
-	sim.runSimulation(iterationRange = [i for i in range(int(totalNumberOfIterations/2))])
+	sim.setEngine("Control")
+	sim.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender)])
 	print("Plotting...")
 	sim.plot2D(drift = True, output = "plots/2d-Control.pdf")
 	
 	print("Run Recommenders....")
 	for rec in recommenders:
 		sim2 = copy.deepcopy(sim) 	# continue from the control period
-		sim2.engine = rec
-		sim2.runSimulation(iterationRange = [i for i in range(int(totalNumberOfIterations/2),totalNumberOfIterations)])
+		sim2.setEngine(rec)
+		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
 		print("Plotting...")
 		sim2.plot2D(drift = True, output = "plots/2d-"+sim2.engine+".pdf")
    
