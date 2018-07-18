@@ -15,22 +15,10 @@ from sklearn.mixture import GaussianMixture
 import os
 import sys, getopt
 import copy
+import json
 
 
 __author__ = 'Dimitrios  Bountouridis'
-
-
-# Gini coefficient computation
-def gini(x):
-	x = np.sort(x)
-	n = x.shape[0]
-	xbar = np.mean(x)
-	#Calc Gini using unordered data (Damgaard & Weiner, Ecology 2000)
-	absdif = 0
-	for i in range(n):
-		for j in range(n): absdif += abs(x[i]-x[j])
-	G = absdif/(2*np.power(n,2)*xbar) * (n/(n)) # change to n/(n-1) for unbiased
-	return G
 
 
 class simulation(object):
@@ -57,12 +45,12 @@ class simulation(object):
 		
 		# Choice model
 		self.k = 14                          
-		self.delta = 5                     
+		self.delta = 10                     
 
 		# Awareness, setting selectes predefined awareness settings
 		self.theta = 0.1      
 		self.thetaDot = 0.5
-		self.Lambda = 0.5 
+		self.Lambda = 0.75 
 		
 		# slope of salience decrease function
 		self.p = 0.1 
@@ -71,7 +59,6 @@ class simulation(object):
 		self.categories = ["entertainment","business","sport","politics","tech"]
 		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
 		self.pickleForFurtherAnalysis = []
-
 
 	# Create an instance of simulation based on the parameters
 	def createSimulationInstance(self):
@@ -106,9 +93,6 @@ class simulation(object):
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
 		random.shuffle(self.itemOrderOfAppearance)
 
-		# create initial lifespan for item availability
-		L = np.array([1 for i in range(self.I)])
-
 		# Item salience based on topic salience and truncated normal distibution
 		self.initialR = np.zeros(self.I)
 		#fig, ax = plt.subplots()
@@ -129,7 +113,7 @@ class simulation(object):
 		# from uniform
 		self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
 		# from bivariate
-		#self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=seed)
+		#self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=self.seed)
 		
 		# size of session per user (e.g. amount of articles read per day)
 		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.totalNumberOfUsers)]
@@ -153,7 +137,14 @@ class simulation(object):
 		
 		# Store everything in a dictionary structure
 		self.Data = {}
-		self.Data.update({"ItemProminence":self.initialR.copy(), "Sales History" : P.copy(),"Users" : self.Users.copy(),"InitialUsers" : self.Users.copy(),  "D" : D.copy(),"ItemLifespan" : L.copy(),"Iterations" : self.totalNumberOfIterations,"X" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations]),"Y" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations])})
+		self.Data.update({"ItemProminence" : self.initialR.copy(), 
+			"Sales History" : P.copy(),
+			"Users" : self.Users.copy(),  
+			"D" : D.copy(),
+			"ItemLifespan" : np.array([1 for i in range(self.I)]),
+			"Iterations" : self.totalNumberOfIterations,
+			"X" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations]),
+			"Y" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations])})
 		self.Data["X"][:,0] = self.Data["Users"][:,0]
 		self.Data["Y"][:,0] = self.Data["Users"][:,1]
 
@@ -163,12 +154,23 @@ class simulation(object):
 	# export users and items as dataframes
 	def exportToDataframe(self):
 
+		print("Globals statisicts:")
+		print(" - Users/readers:")
 		UsersDF = pd.DataFrame( list(zip(self.UserSessionSize, self.userVarietySeeking, self.Users[:,0], self.Users[:,1])),columns=["SessionSize","VarietySeeking","X","Y"] )
 		print(UsersDF.describe())
 
-		ItemsDF = pd.DataFrame( list(zip(self.ItemsClass, self.initialR, self.Items[:,0], self.Items[:,1])),columns=["Class","InitialProminence","X","Y"] )
+		print(" - Items/articles:")
+		ItemsDF = pd.DataFrame(self.ItemFeatures, columns = self.categories)
+		ItemsDF["Class"] = self.ItemsClass
+		ItemsDF["InitialProminence"] = self.initialR
+		ItemsDF["X"] = self.Items[:,0]
+		ItemsDF["Y"] = self.Items[:,1]
 		print(ItemsDF.describe())
 
+		print("Storing dataframes to 'temp'...")
+		UsersDF.to_pickle("temp/Users.pkl")
+		ItemsDF.to_pickle("temp/Items.pkl")
+		#, open('temp/items-features.pkl', 'wb'))
 
 	# if a new recommendation engine is set, then delete the data points so far
 	def setEngine(self, engine):
@@ -262,7 +264,7 @@ class simulation(object):
 
 		# update lifespan of available items
 		self.Data["ItemLifespan"][activeItemIndeces] = self.Data["ItemLifespan"][activeItemIndeces]+1
-		#self.Data["ItemLifespan"][self.Data["ItemLifespan"]<0] = 0 # no negatives	
+		
 		# update prominence based on lifespan, naive
 		for a in activeItemIndeces:
 			self.Data['ItemProminence'][a]= self.prominenceFunction(self.initialR[a],self.Data['ItemLifespan'][a])
@@ -282,28 +284,40 @@ class simulation(object):
 		
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
 
-	# show some info on terminal at each iteration
-	def verbose(self, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces):
+	# export json for online interface
+	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces):
+		Json = {}
+		Json.update({"Current recommender":self.engine})
+		Json.update({"Epoch":epoch})
+		Json.update({"Iteration index":epoch_index})
+		Json.update({"Completed":(epoch_index+1)/len(iterationRange)})
+		ApA = {}
 		for i in range(1,10):
-				indeces = np.where(self.Data["ItemLifespan"]==i)[0]
-				A = Awareness[:,indeces]
-				print("    Percentage aware of age",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
-		for i in range(5):
+			indeces = np.where(self.Data["ItemLifespan"]==i)[0]
+			A = Awareness[:,indeces]
+			ApA.update({ "Age of "+str(i)+" day(s)" : float("%.2f"%(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)))) })
+		Json.update({'Distribution of awareness per article age':ApA})
+		f = {}
+		for i in range(len(self.categories)):
 			indeces = np.where(self.ItemsClass==i)[0]
 			A = Awareness[:,indeces]
-			print("    Percentage aware of class",i," :",np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)) )
-		print("    Median #aware of:",np.median(np.sum(Awareness,axis=1)))
-		print("    Mean aware_score of popularity:",np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)),"Mean aware_score of proximity:",np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))
-		print('    Available and non available:',len(activeItemIndeces),len(nonActiveItemIndeces))
+			f.update({self.categories[i]: float("%.2f"%(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1)))) })
+		Json.update({"Distribution of awareness per topic":f})
+		Json.update({"(median) Number of items in user's awareness":np.median(np.sum(Awareness,axis=1))})
+		Json.update({"Number of available, non-available items":[len(activeItemIndeces),len(nonActiveItemIndeces) ]})
+		Json.update({"(mean) Number of items in user's awareness due to proximity":np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1))})
+		Json.update({"(mean) Number of items in user's awareness due to popularity":np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1))})
+		print(json.dumps(Json, sort_keys=True, indent=4))
+		Json.update({"Users position":[(i[0],i[1]) for i in self.Data["Users"]]})
+		Json.update({"Items position":[(i[0],i[1]) for i in self.Items]})
+		json.dump(Json, open('temp/'+str(self.engine)+'-data.json', 'w'),sort_keys=True, indent=4)
+	
 
 	# Run the simulation
 	def runSimulation(self, iterationRange =[]):
-		
-		print("========= Engine ",self.engine," ========")
 			
 		# for each iteration
 		for epoch_index, epoch in enumerate(iterationRange):
-			print(" Epoch",epoch," epoch index:", epoch_index)
 			
 			if epoch_index>0: 
 				self.Data["Users"][user]  = self.Data["Users"][user].copy()
@@ -321,7 +335,7 @@ class simulation(object):
 			Awareness = Awareness - self.Data["Sales History"]>0
 
 			# show stats on screen
-			self.verbose(Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces)
+			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces)
 	
 			# MyMediaLite recommendations 
 			if self.engine is not "Control":
@@ -338,6 +352,10 @@ class simulation(object):
 				if self.engine is not "Control":
 					# recommend one of the available items, old version
 					#Rec = np.array(activeItemIndeces)[self.recengine(eng, user, activeItemIndeces)] 
+					if user not in recommendations.keys():
+						print(" -- Nothing to recommend -- to user ",user)
+						continue
+
 					Rec = recommendations[user]
 						
 					# temporary adjust awareness for that item-user pair
@@ -388,7 +406,7 @@ class simulation(object):
 	
 	# Run MML
 	def mmlRecommendation(self):
-		post = ""
+		post = " --random-seed="+str(self.seed)
 
 		# run
 		command = "mono mmlDocuments/item_recommendation.exe --training-file=mmlDocuments/positive_only_feedback.csv --item-attributes=mmlDocuments/items_attributes.csv --recommender="+self.engine+"  --predict-items-number="+str(self.n)+" --prediction-file=mmlDocuments/output.txt "+post
@@ -523,6 +541,8 @@ def main(argv):
 	print("Run Control period...")
 	sim.setEngine("Control")
 	sim.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender)])
+	print("Saving...")
+	pickle.dump(sim.Data, open('temp/Control-data.pkl', 'wb'))
 	print("Plotting...")
 	sim.plot2D(drift = True, output = "plots/2d-Control.pdf")
 	
@@ -531,7 +551,9 @@ def main(argv):
 		sim2 = copy.deepcopy(sim) 	# continue from the control period
 		sim2.setEngine(rec)
 		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
-		print("Plotting...")
+		print("Saving for "+rec+"...")
+		pickle.dump(sim2.Data, open('temp/'+rec+'-data.pkl', 'wb'))
+		print("Plotting for "+rec+"...")
 		sim2.plot2D(drift = True, output = "plots/2d-"+sim2.engine+".pdf")
    
     
