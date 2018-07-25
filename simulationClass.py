@@ -21,8 +21,11 @@ import metrics
 
 __author__ = 'Dimitrios  Bountouridis'
 
-def standardize(num):
-	return float("%.2f"%(num))
+def standardize(num, precision = 2):
+	if precision == 2:
+		return float("%.2f"%(num))
+	if precision == 4:
+		return float("%.4f"%(num))
 
 
 class simulation(object):
@@ -70,6 +73,7 @@ class simulation(object):
 		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
 		self.pickleForFurtherAnalysis = []
 		self.pickleForMetrics = []
+		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": []}
 		self.outfolder = ""
 
 	# Create an instance of simulation based on the parameters
@@ -213,6 +217,7 @@ class simulation(object):
 		self.engine = engine
 		self.pickleForFurtherAnalysis=[]
 		self.pickleForMetrics=[]
+		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": []}
 
 	# make awareness matrix
 	def makeawaremx(self):
@@ -322,7 +327,7 @@ class simulation(object):
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
 
 	# export json for online interface
-	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces):
+	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces, SalesHistoryBefore):
 		Json = {}
 		Json.update({"Current recommender" : self.engine})
 		Json.update({"Epoch" : epoch})
@@ -334,7 +339,6 @@ class simulation(object):
 		Json.update({"(mean) Number of items in user's awareness due to popularity" : standardize(np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)))})
 		
 		ApA = {}
-
 		for i in range(1,10):
 			indeces = np.where(self.Data["ItemLifespan"]==i)[0]
 			A = Awareness[:,indeces]
@@ -348,6 +352,7 @@ class simulation(object):
 			f.update({self.categories[i] : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1))) })
 		Json.update({"Distribution of awareness per topic" : f})
 
+		# choice figures
 		f = {}
 		values = []
 		labels = []
@@ -360,8 +365,35 @@ class simulation(object):
 			f.update({self.categories[i] : standardize(np.sum(np.sum(A,axis=1))/np.sum(np.sum(self.Data["Sales History"],axis=1))) })
 			values.append( standardize(np.sum(np.sum(A,axis=1))) )
 		Json.update({"Distribution of choice per topic" : f})
-		Json.update({"Figure1" : {"values":values,"labels":labels,"type":type_,"title":title}})
+		Json.update({"Figure1" : {"values": values,"labels": labels,"type":  type_,"title":title }})
+
+		x = [i for i in range(1,11)]
+		y = []
+		type_ = "bar"
+		title = "Distribution of choice per article age (in days) for the current iteration"
+		for i in range(2,12):
+			indeces = np.where(self.Data["ItemLifespan"]==i)[0]
+			A = self.Data["Sales History"] - SalesHistoryBefore
+			A = A[:,indeces]
+			y.append( standardize(np.sum(np.sum(A,axis=1))) )
+		Json.update({"Figure4" : {"x": x,"y": y,"type": type_,"title": title, "xaxis":{"title": "Article age in days/iterations" }, "yaxis":{"title": "Counts" } }})
 		
+		# diversity figures
+		if self.engine is not "Control":
+			x = [i for i in range(len(self.diversityMetrics["ILD"]))]
+			y = [standardize(i,precision=4) for i in self.diversityMetrics["ILD"]]
+			type_ = "scatter"
+			mode = 'lines+markers'
+			title = "ILD diversity"
+			Json.update({"Figure2" : {"x": x,"y": y,"type": type_,"title": title, "mode": mode, "xaxis":{"title": "Iteration" }, "yaxis":{"title": "ILD" }}})
+
+			x = [i for i in range(len(self.diversityMetrics["EPC"]))]
+			y = [standardize(i,precision=4) for i in self.diversityMetrics["EPC"]]
+			type_ = "scatter"
+			title = "EPC diversity"
+			Json.update({"Figure3" : {"x": x,"y": y,"type": type_,"title": title,  "mode": mode, "xaxis":{"title": "Iteration" }, "yaxis":{"title": "EPC" }}})
+			#self.pickleForMetrics.append([epoch_index,self.engine,met["EPC"],met["ILD"],gini])
+
 		# output on terminal
 		print(json.dumps(Json, sort_keys=True, indent=4))
 		
@@ -430,18 +462,23 @@ class simulation(object):
 					indexOfChosenItemW = indecesOfChosenItemsW[i]
 					self.pickleForFurtherAnalysis.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW ])
 
-			# show stats on screen
-			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces)
-
 			# after each iteration
 			print("Temporal adaptations...")	
 			self.addedFunctionalitiesAfterIteration( activeItemIndeces)
 
-			# store results for metrics
+			# compute diversity metrics		
 			if self.engine is not "Control":
 				met = metrics.metrics(SalesHistoryBefore, recommendations, self.ItemFeatures,self.ItemDistances,self.Data["Sales History"])
-				gini = metrics.computeGinis(self.Data["Sales History"],self.ControlHistory)
-				self.pickleForMetrics.append([epoch_index, self.engine,met["EPC"],met["ILD"],gini])
+				met.update({"Gini": metrics.computeGinis(self.Data["Sales History"],self.ControlHistory)})
+				self.diversityMetrics["EPC"].append(met["EPC"])
+				self.diversityMetrics["ILD"].append(met["ILD"])
+				self.diversityMetrics["Gini"].append(met["Gini"])
+				
+				# store for later analysis
+				self.pickleForMetrics.append([epoch_index, self.engine,met["EPC"],met["ILD"],met["Gini"]])
+
+			# show stats on screen and save json for interface
+			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces, SalesHistoryBefore)
 
 		# save results
 		self.exportToDataframe()
