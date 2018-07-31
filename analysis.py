@@ -47,18 +47,12 @@ def diversityAnalysis(infolder):
 
 	# plot
 	df2 = df.loc[df['MML method'] != "Control"]
-	g = sns.factorplot(x="Iteration index", y="EPC", hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=0.7, sharey = False, legend = True, dodge=True, legend_out=False)
-	g.despine(left=True)
-	plt.savefig(infolder + "/Analysis diversity - EPC.pdf")
-	
+	types = ["LongTail","LongTail","Unexpect","Unexpect","Unexpect","Business"]
+	for i,metric in enumerate(["EPC","EFD","EPD","EILD", "ILD","Gini"]):
+		g = sns.factorplot(x="Iteration index", y=metric, hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=1, sharey = False, legend = True, dodge=True, legend_out=False)
+		g.despine(left=True)
+		plt.savefig(infolder + "/Analysis diversity "+types[i]+" - "+metric+".pdf")
 
-	g = sns.factorplot(x="Iteration index", y="ILD", hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=0.7, sharey = False, legend = True, dodge=True, legend_out=False)
-	g.despine(left=True)
-	plt.savefig(infolder + "/Analysis diversity - ILD.pdf")
-
-	g = sns.factorplot(x="Iteration index", y="Gini", hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=0.7, sharey = False, legend = True, dodge=True, legend_out=False)
-	g.despine(left=True)
-	plt.savefig(infolder + "/Analysis diversity - Gini.pdf")
 
 
 
@@ -93,15 +87,35 @@ def analysis(infolder):
 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 	flatui = sns.color_palette("husl", 8)
 
-	# percentage of purchases that were recommended
-	D = []
-	for g, group in df.groupby("MML method"):	
-		for i,group3 in group.groupby("Iteration index"):
-			f = []
-			for t,group2 in group3.groupby("Class/Topic"):
-				total = np.array(group2).shape[0]
-				f.append(total)
-			D.append([g]+f)
+
+	# D = []
+	# for g, group in df.groupby("MML method"):
+	# 	if g=="Control": continue
+	# 	F = {"Recommended": [], "Not Recommended": []}	
+	# 	for i,group3 in group.groupby("Item"):
+	# 		#print(" ",i)
+	# 		totalr = False
+	# 		totalnr = False
+	# 		for t,group2 in group3.groupby("Item has been recommended before"):
+	# 			total = np.array(group2).shape[0]
+	# 			if t: totalr = total
+	# 			if not t: totalrn = total
+			
+	# 		F["Recommended"].append(totalr)
+	# 		F["Not Recommended"].append(totalrn)
+	# 	V = np.sum(F["Recommended"]) + np.sum(F["Not Recommended"])
+	# 	print(g,np.sum(F["Recommended"]),np.sum(F["Not Recommended"]),V, np.sum(F["Recommended"])/V,np.sum(F["Not Recommended"])/V)
+	
+
+	# # percentage of purchases that were recommended
+	# D = []
+	# for g, group in df.groupby("MML method"):	
+	# 	for i,group3 in group.groupby("Iteration index"):
+	# 		f = []
+	# 		for t,group2 in group3.groupby("Class/Topic"):
+	# 			total = np.array(group2).shape[0]
+	# 			f.append(total)
+	# 		D.append([g]+f)
 	# #print(D,["MML method"]+[t for t,group in df.groupby("Class/Topic")])
 	# df_ = pd.DataFrame(D,columns=["MML method"]+[t for t,group in df.groupby("Class/Topic")] )
 	# print(df_)
@@ -119,6 +133,16 @@ def analysis(infolder):
 	# g.despine(left=True)
 	# plt.savefig(infolder + "/Analysis - Selected articles that were recommended.pdf")
 	# #plt.show()
+	for g, group in df.groupby("MML method"):
+		total = np.array(group).shape[0]
+		print(g)
+		for i,group3 in group.groupby("Was Recommended"):
+			print(i,np.array(group3).shape[0]/total)
+
+
+	g = sns.factorplot("Was Recommended",col="MML method", kind="count", data=df, capsize=.2, palette=sns.color_palette("BuGn_r",15), size=3, aspect=.75,  legend = True, legend_out=False,dodge=True)
+	g.despine(left=True)
+	plt.savefig(infolder + "/Analysis - Was Recommended.pdf")
 
 	g = sns.factorplot(y="Agreement between deterministic and stochastic choice",x="MML method", kind="bar", data=df, capsize=.2, palette=flatui, size=4, aspect=1.5,  legend = True, legend_out=False,dodge=True, orient = "v")
 	plt.savefig(infolder + "/Analysis - Agreement between deterministic and stochastic choice.pdf")

@@ -3,9 +3,9 @@ import numpy as np
 from scipy import spatial
 from scipy import stats
 from scipy.stats import norm
+from scipy.stats import chi2
 import random
 import time
-import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import pickle
@@ -17,15 +17,61 @@ import sys, getopt
 import copy
 import json
 import metrics
+import matplotlib
+matplotlib.use('Agg')
+# # force headless backend, or set 'backend' to 'Agg'
+# # in your ~/.matplotlib/matplotlibrc
+# matplotlib.use('Agg')
+
+# # force non-interactive mode, or set 'interactive' to False
+# # in your ~/.matplotlib/matplotlibrc
+# matplotlib.pyplot.ioff()
 
 
 __author__ = 'Dimitrios  Bountouridis'
+
+import bisect
+import collections
+
+def cdf(weights):
+    total = sum(weights)
+    result = []
+    cumsum = 0
+    for w in weights:
+        cumsum += w
+        result.append(cumsum / total)
+    return result
+
+def choice(population, weights):
+    assert len(population) == len(weights)
+    cdf_vals = cdf(weights)
+    x = random.random()
+    idx = bisect.bisect(cdf_vals, x)
+    return population[idx]
 
 def standardize(num, precision = 2):
 	if precision == 2:
 		return float("%.2f"%(num))
 	if precision == 4:
 		return float("%.4f"%(num))
+
+# export data to plotly json schema
+def plotlyjson(x=[],y=[],type_=[],mode="none",title="",ytitle = "",xtitle = ""):
+	data = {"x":x,
+	"y":y,
+	"type":type_,
+	"mode":mode}
+
+	layout = {
+	"title":title,
+	"yaxis":{ "title": ytitle},
+	"xaxis":{ "title": xtitle},
+	}
+	return {"data":data,"layout":layout}
+
+def printj(text, comments=""):
+	json = {"action":text,"comments":comments}
+	print(json)
 
 
 class simulation(object):
@@ -47,7 +93,7 @@ class simulation(object):
 		self.m = 0.05    
 
 		# Inputs: articles
-		self.totalNumberOfIterations = 40
+		self.totalNumberOfIterations = 20
 		self.numberOfNewItemsPI = 100 
 		
 		# Recommendation engines
@@ -58,12 +104,12 @@ class simulation(object):
 		
 		# Choice model
 		self.k = 14                          
-		self.delta = 10                     
+		self.delta = 5                     
 
 		# Awareness, setting selectes predefined awareness settings
 		self.theta = 0.1      
 		self.thetaDot = 0.5
-		self.Lambda = 0.9 
+		self.Lambda = 0.8 
 		
 		# slope of salience decrease function
 		self.p = 0.1 
@@ -71,9 +117,8 @@ class simulation(object):
 		self.userVarietySeeking = []
 		self.categories = ["entertainment","business","sport","politics","tech"]
 		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
-		self.pickleForFurtherAnalysis = []
-		self.pickleForMetrics = []
-		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": []}
+		self.AnaylysisInteractionData = []
+		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": []}
 		self.outfolder = ""
 
 	# Create an instance of simulation based on the parameters
@@ -88,7 +133,7 @@ class simulation(object):
 		# Generate items/articles from the BBC data
 		R, S = [5,1,6,7], [5,2,28,28]
 		r = int(random.random()*4)
-		print("Item space projection selected:",R[r])
+		printj("Item space projection selected:",R[r])
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection'+str(R[r])+'.pkl','rb'))
 		gmm = GaussianMixture(n_components=5, random_state=S[r]).fit(X)
 		samples_,self.ItemsClass = gmm.sample(self.I)
@@ -99,15 +144,15 @@ class simulation(object):
 		# Spearman correlation test between feature representations
 		# dist = spatial.distance.cdist(self.Items, self.Items)[0]
 		# dist2 = spatial.distance.cdist(self.ItemFeatures, self.ItemFeatures)[0]
-		# print(stats.pearsonr(dist,dist2))
-		# print(stats.spearmanr(dist,dist2))
+		# printj(stats.pearsonr(dist,dist2))
+		# printj(stats.spearmanr(dist,dist2))
 
 		# Fitting a guassian on the pairwise item distances
 		# (mu, sigma) = norm.fit(dist)
-		# print(mu, sigma)
-		# fig, ax = plt.subplots(2, sharex=True)
+		# printj(mu, sigma)
+		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
 		# ax[0].hist(dist, normed=True)
-		# plt.show()
+		# matplotlib.pyplot.show()
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
@@ -115,7 +160,10 @@ class simulation(object):
 
 		# Item salience based on topic salience and truncated normal distibution
 		self.initialR = np.zeros(self.I)
-		#fig, ax = plt.subplots()
+		#df = 2
+		#mean, var, skew, kurt = chi2.stats(df, moments='mvsk')
+		#rv = chi2(df)
+		fig, ax = matplotlib.pyplot.subplots()
 		for i in range(len(self.categories)):
 			indeces = np.where(self.ItemsClass==i)[0]
 			lower, upper = 0, 1
@@ -123,10 +171,10 @@ class simulation(object):
 			a = (lower - mu) / sigma
 			b=  (upper - mu) / sigma
 			X = stats.truncnorm( a, b, loc=mu, scale=sigma)
-			self.initialR[indeces] = X.rvs(len(indeces), random_state = self.seed)
-			#x = np.linspace(0,1)
-			#ax.plot(x, X.pdf(x)/np.sum(x),'r-', lw=1, alpha=0.6, label=self.categories[i])
-		#plt.show()
+			#X = 10*X.rvs(len(indeces), random_state = self.seed)
+			self.initialR[indeces] = X.rvs(len(indeces), random_state = self.seed) #1-rv.pdf(X)/0.5
+		ax.hist(self.initialR, normed=True)
+		matplotlib.pyplot.show()
 			
 
 		# Generate users/customers
@@ -135,7 +183,7 @@ class simulation(object):
 		for i, user in enumerate(self.Users):
 			while spatial.distance.cdist([user], [[0,0]],metric = 'euclidean')[0][0]>1.1:
 				user = np.random.uniform(-1,1,(1,2))[0]
-			self.Users[i]= user
+			self.Users[i] = user
 
 	
 		# from bivariate
@@ -156,10 +204,10 @@ class simulation(object):
 		mu, sigma = 0.1, 0.03
 		X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
 		self.userVarietySeeking = X.rvs(self.totalNumberOfUsers, random_state = self.seed)
-		# print(self.userVarietySeeking)
-		# fig, ax = plt.subplots(2, sharex=True)
+		# printj(self.userVarietySeeking)
+		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
 		# ax[0].hist(self.userVarietySeeking, normed=True)
-		# plt.show()
+		# matplotlib.pyplot.show()
 
 		# Purchases, sales history
 		P = np.zeros([self.totalNumberOfUsers,self.I]) 	
@@ -173,7 +221,8 @@ class simulation(object):
 			"Sales History" : P.copy(),
 			"Users" : self.Users.copy(),  
 			"D" : D.copy(),
-			"ItemLifespan" : np.array([1 for i in range(self.I)]),
+			"ItemLifespan" : np.ones(self.I),
+			"Item Has Been Recommended" : np.zeros(self.I),
 			"Iterations" : self.totalNumberOfIterations,
 			"X" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations]),
 			"Y" : np.zeros([self.totalNumberOfUsers,self.totalNumberOfIterations])})
@@ -181,32 +230,17 @@ class simulation(object):
 		self.Data["Y"][:,0] = self.Data["Users"][:,1]
 
 	# export users and items as dataframes
-	def exportToDataframe(self):
-		print("Exporting per iteration data...")
-
-		# #print("Globals statisicts:")
-		# #print(" - Users/readers:")
-		# UsersDF = pd.DataFrame( list(zip(self.UserSessionSize, self.userVarietySeeking, self.Users[:,0], self.Users[:,1])),columns=["SessionSize","VarietySeeking","X","Y"] )
-		# #print(UsersDF.describe())
-
-		# #(" - Items/articles:")
-		# ItemsDF = pd.DataFrame(self.ItemFeatures, columns = self.categories)
-		# ItemsDF["Class"] = self.ItemsClass
-		# ItemsDF["InitialProminence"] = self.initialR
-		# ItemsDF["X"] = self.Items[:,0]
-		# ItemsDF["Y"] = self.Items[:,1]
-		# #print(ItemsDF.describe())
-
-		# #print("Storing dataframes to workspace...")
-		# UsersDF.to_pickle(self.outfolder + "/Initial-Users-df.pkl")
-		# ItemsDF.to_pickle(self.outfolder + "/Initial-Items-df.pkl")
+	def exportAnalysisDataAfterIteration(self):
+		printj("Exporting per iteration data...", comments = 'Two output pickle files are stored in your workspace.')
 		
-		# store user iteration results
-		df = pd.DataFrame(self.pickleForFurtherAnalysis,columns=["Iteration index","User","MML method","Item","Item Age","Item Prominence","Class/Topic","Was Recommended","Agreement between deterministic and stochastic choice"])
+		# purchase history
+		df = pd.DataFrame(self.AnaylysisInteractionData,columns=["Iteration index","User","MML method","Item","Item Age","Item Prominence","Class/Topic","Was Recommended","Agreement between deterministic and stochastic choice", "Item has been recommended before"])
 		df.to_pickle(self.outfolder + "/dataframe for simple analysis-"+self.engine+".pkl")
 
-		# store
-		df = pd.DataFrame(self.pickleForMetrics,columns=["Iteration index","MML method","EPC","ILD","Gini"])
+		# metrics
+		df = pd.DataFrame(self.diversityMetrics)
+		df["Iteration index"] = np.array([i for i in range(len(self.diversityMetrics["EPC"])) ])
+		df["MML method"] = np.array([self.engine for i in  range(len(self.diversityMetrics["EPC"]))])
 		df.to_pickle(self.outfolder + "/metrics analysis-"+self.engine+".pkl")
 
 
@@ -215,9 +249,8 @@ class simulation(object):
 		if self.engine == "Control" and engine!=self.engine:
 			self.ControlHistory = self.Data["Sales History"].copy()
 		self.engine = engine
-		self.pickleForFurtherAnalysis=[]
-		self.pickleForMetrics=[]
-		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": []}
+		self.AnaylysisInteractionData=[]
+		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": []}
 
 	# make awareness matrix
 	def makeawaremx(self):
@@ -254,7 +287,10 @@ class simulation(object):
 		#V = Similarity/np.sum(Similarity)
 		V = Similarity.copy()
 
-		if not control: V[Rec] = 1*Similarity[Rec] + self.delta 
+		if not control: 
+			# exponential ranking discount, from Vargas
+			for k, r in enumerate(Rec):
+				V[r] = Similarity[r] + self.delta*np.power(0.9,k)
 
 		# Introduce the stochastic component
 		E = -np.log(-np.log([random.random() for v in range(len(V))]))
@@ -352,20 +388,21 @@ class simulation(object):
 			f.update({self.categories[i] : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1))) })
 		Json.update({"Distribution of awareness per topic" : f})
 
+		#output on terminal
+		print(json.dumps(Json, sort_keys=True, indent=4))
+
 		# choice figures
-		f = {}
+		Json.update({"Figures":[]})
+	
 		values = []
 		labels = []
-		type_ = "pie"
 		title = "Distribution of choice per topic"
 		for i in range(len(self.categories)):
 			labels.append(self.categories[i])
 			indeces = np.where(self.ItemsClass==i)[0]
 			A = self.Data["Sales History"][:,indeces]
-			f.update({self.categories[i] : standardize(np.sum(np.sum(A,axis=1))/np.sum(np.sum(self.Data["Sales History"],axis=1))) })
 			values.append( standardize(np.sum(np.sum(A,axis=1))) )
-		Json.update({"Distribution of choice per topic" : f})
-		Json.update({"Figure1" : {"values": values,"labels": labels,"type":  type_,"title":title }})
+		Json["Figures"].append( plotlyjson(x = labels, y = values, type_ = "pie" ,mode = "none",title = title, ytitle = "",xtitle = ""))
 
 		x = [i for i in range(1,11)]
 		y = []
@@ -376,26 +413,17 @@ class simulation(object):
 			A = self.Data["Sales History"] - SalesHistoryBefore
 			A = A[:,indeces]
 			y.append( standardize(np.sum(np.sum(A,axis=1))) )
-		Json.update({"Figure4" : {"x": x,"y": y,"type": type_,"title": title, "xaxis":{"title": "Article age in days/iterations" }, "yaxis":{"title": "Counts" } }})
+		Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "bar" ,mode = "none",title = title, ytitle = "Counts",xtitle = "Article age in days/iterations"))
 		
 		# diversity figures
 		if self.engine is not "Control":
 			x = [i for i in range(len(self.diversityMetrics["ILD"]))]
 			y = [standardize(i,precision=4) for i in self.diversityMetrics["ILD"]]
-			type_ = "scatter"
-			mode = 'lines+markers'
-			title = "ILD diversity"
-			Json.update({"Figure2" : {"x": x,"y": y,"type": type_,"title": title, "mode": mode, "xaxis":{"title": "Iteration" }, "yaxis":{"title": "ILD" }}})
+			Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "ILD diversity", ytitle = "ILD",xtitle = "Iteration"))
 
 			x = [i for i in range(len(self.diversityMetrics["EPC"]))]
 			y = [standardize(i,precision=4) for i in self.diversityMetrics["EPC"]]
-			type_ = "scatter"
-			title = "EPC diversity"
-			Json.update({"Figure3" : {"x": x,"y": y,"type": type_,"title": title,  "mode": mode, "xaxis":{"title": "Iteration" }, "yaxis":{"title": "EPC" }}})
-			#self.pickleForMetrics.append([epoch_index,self.engine,met["EPC"],met["ILD"],gini])
-
-		# output on terminal
-		print(json.dumps(Json, sort_keys=True, indent=4))
+			Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "EPC diversity", ytitle = "EPC",xtitle = "Iteration"))
 		
 		# output on file
 		Json.update({"Users position" : [(standardize(i[0]),standardize(i[1])) for i in self.Data["Users"]]})
@@ -431,16 +459,18 @@ class simulation(object):
 				recommendations = self.mmlRecommendation()
 				
 			# for each active user
-			print("Choice...")
+			printj(self.engine+": Choice...")
 			for user in activeUserIndeces:
 				# if epoch>1: self.simplePlot(forUser = user, awareness = Awareness[user, :], active = activeItemIndeces)
 	
 				Rec=np.array([-1])
 				if self.engine is not "Control":
 					if user not in recommendations.keys():
-						print(" -- Nothing to recommend -- to user ",user)
+						printj(" -- Nothing to recommend -- to user ",user)
 						continue
 					Rec = recommendations[user]
+
+					self.Data["Item Has Been Recommended"][Rec] = 1
 						
 					# temporary adjust awareness for that item-user pair
 					Awareness[user, Rec] = 1				
@@ -460,10 +490,10 @@ class simulation(object):
 				# store some data for analysis
 				for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
 					indexOfChosenItemW = indecesOfChosenItemsW[i]
-					self.pickleForFurtherAnalysis.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW ])
+					self.AnaylysisInteractionData.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW,self.Data["Item Has Been Recommended"][indexOfChosenItemW] ])
 
 			# after each iteration
-			print("Temporal adaptations...")	
+			printj(self.engine+": Temporal adaptations...")	
 			self.addedFunctionalitiesAfterIteration( activeItemIndeces)
 
 			# compute diversity metrics		
@@ -471,17 +501,17 @@ class simulation(object):
 				met = metrics.metrics(SalesHistoryBefore, recommendations, self.ItemFeatures,self.ItemDistances,self.Data["Sales History"])
 				met.update({"Gini": metrics.computeGinis(self.Data["Sales History"],self.ControlHistory)})
 				self.diversityMetrics["EPC"].append(met["EPC"])
+				self.diversityMetrics["EPD"].append(met["EPD"])
+				self.diversityMetrics["EILD"].append(met["EILD"])
 				self.diversityMetrics["ILD"].append(met["ILD"])
+				self.diversityMetrics["EFD"].append(met["EFD"])
 				self.diversityMetrics["Gini"].append(met["Gini"])
-				
-				# store for later analysis
-				self.pickleForMetrics.append([epoch_index, self.engine,met["EPC"],met["ILD"],met["Gini"]])
 
 			# show stats on screen and save json for interface
 			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces, SalesHistoryBefore)
 
 		# save results
-		self.exportToDataframe()
+		self.exportAnalysisDataAfterIteration()
 		
 	# export to MML type input
 	def exportToMMLdocuments(self,  activeItemIndeces = False):
@@ -536,69 +566,69 @@ class simulation(object):
 			recommendations.update({user_id:rec})
 		return recommendations 
 	
-	# plotting	    
-	def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
+	# # plotting	    
+	# def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
 
-		sns.set_context("notebook", font_scale=1.2, rc={"lines.linewidth": 1.2})
-		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
-		flatui = sns.color_palette("husl", 8)
-		f, ax = plt.subplots(1,1, figsize=(6,6), sharey=True)
+	# 	sns.set_context("notebook", font_scale=1.2, rc={"lines.linewidth": 1.2})
+	# 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+	# 	flatui = sns.color_palette("husl", 8)
+	# 	f, ax = matplotlib.pyplot.subplots(1,1, figsize=(6,6), sharey=True)
 
-		# products
-		cmaps= ['Blues','Reds','Greens','Oranges','Greys']
-		colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(self.categories))]
+	# 	# products
+	# 	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+	# 	colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(self.categories))]
 		
-		# if no sales history yet, display items with prominence as 3rd dimension
-		if np.sum(np.sum(self.Data["Sales History"]))==0:
-			n = np.sum(self.Data["Sales History"],axis=0)
-			for i in range(self.I): 
-				color = colors[self.ItemsClass[i]]
-				s = self.Data["ItemProminence"][i]*40
-				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=s,alpha=0.5)
-		else:
-			# KDE plot
-			n = np.sum(self.Data["Sales History"],axis=0)
-			for cat in range(len(self.categories)): # 5 topic spaces
-				indeces=np.where(self.ItemsClass==cat)[0]
-				x = []
-				for i in indeces:
-					if n[i]>0:
-						for k in range(int(n[i])): x.append([self.Items[i,0],self.Items[i,1]])
-				ax = sns.kdeplot(np.array(x)[:,0], np.array(x)[:,1], shade=True, shade_lowest=False, alpha = 0.4, cmap=cmaps[cat],kernel='gau')
+	# 	# if no sales history yet, display items with prominence as 3rd dimension
+	# 	if np.sum(np.sum(self.Data["Sales History"]))==0:
+	# 		n = np.sum(self.Data["Sales History"],axis=0)
+	# 		for i in range(self.I): 
+	# 			color = colors[self.ItemsClass[i]]
+	# 			s = self.Data["ItemProminence"][i]*40
+	# 			ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=s,alpha=0.5)
+	# 	else:
+	# 		# KDE plot
+	# 		n = np.sum(self.Data["Sales History"],axis=0)
+	# 		for cat in range(len(self.categories)): # 5 topic spaces
+	# 			indeces=np.where(self.ItemsClass==cat)[0]
+	# 			x = []
+	# 			for i in indeces:
+	# 				if n[i]>0:
+	# 					for k in range(int(n[i])): x.append([self.Items[i,0],self.Items[i,1]])
+	# 			ax = sns.kdeplot(np.array(x)[:,0], np.array(x)[:,1], shade=True, shade_lowest=False, alpha = 0.4, cmap=cmaps[cat],kernel='gau')
 			
-			# scatter
-			for i in range(self.I): 
-				color = colors[self.ItemsClass[i]]
-				if n[i]>=1:
-					v = 0.4+ n[i]/np.max(n)*0.4
-					c = (1,0,0.0,v)
-					s = 2+n[i]/np.max(n)*40
-					marker = 'o'
-				else:
-					color = (0,0,0,0.1)
-					v = 0.1
-					s = 10
-					marker = 'x'
-				ax.scatter(self.Items[i,0], self.Items[i,1], marker=marker, c=color,s=s,alpha=v)	
+	# 		# scatter
+	# 		for i in range(self.I): 
+	# 			color = colors[self.ItemsClass[i]]
+	# 			if n[i]>=1:
+	# 				v = 0.4+ n[i]/np.max(n)*0.4
+	# 				c = (1,0,0.0,v)
+	# 				s = 2+n[i]/np.max(n)*40
+	# 				marker = 'o'
+	# 			else:
+	# 				color = (0,0,0,0.1)
+	# 				v = 0.1
+	# 				s = 10
+	# 				marker = 'x'
+	# 			ax.scatter(self.Items[i,0], self.Items[i,1], marker=marker, c=color,s=s,alpha=v)	
 		
-		# final user position as a circle
-		for i in range(len(self.Users[:,1])):
-			ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='D', c='k',s=8, alpha = 0.4 )
+	# 	# final user position as a circle
+	# 	for i in range(len(self.Users[:,1])):
+	# 		ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='D', c='k',s=8, alpha = 0.4 )
 		
-		# user drift
-		if drift:
-			for i in range(len(self.Users[:,1])):
-				for j in range(len(self.Data["X"][0,:])-1):
-					if self.Data["X"][i,j+1]!=0 and self.Data["Y"][i,j+1]!=0:
-						ax.plot([self.Data["X"][i,j], self.Data["X"][i,j+1]], [self.Data["Y"][i,j], self.Data["Y"][i,j+1]], 'k-', lw=1, alpha =0.4)
+	# 	# user drift
+	# 	if drift:
+	# 		for i in range(len(self.Users[:,1])):
+	# 			for j in range(len(self.Data["X"][0,:])-1):
+	# 				if self.Data["X"][i,j+1]!=0 and self.Data["Y"][i,j+1]!=0:
+	# 					ax.plot([self.Data["X"][i,j], self.Data["X"][i,j+1]], [self.Data["Y"][i,j], self.Data["Y"][i,j+1]], 'k-', lw=1, alpha =0.4)
 
-		ax.set_xlabel(self.engine)
-		ax.set_aspect('equal', adjustable='box')
-		ax.set_xlim([-1.1,1.1])
-		ax.set_ylim([-1.1,1.1])
-		plt.tight_layout()
-		plt.savefig(self.outfolder + "/" + output)
-		if not storeOnly: plt.show()
+	# 	ax.set_xlabel(self.engine)
+	# 	ax.set_aspect('equal', adjustable='box')
+	# 	ax.set_xlim([-1.1,1.1])
+	# 	ax.set_ylim([-1.1,1.1])
+	# 	matplotlib.pyplot.tight_layout()
+	# 	matplotlib.pyplot.savefig(self.outfolder + "/" + output)
+	# 	if not storeOnly: matplotlib.pyplot.show()
 
  
 def main(argv):
@@ -606,11 +636,11 @@ def main(argv):
 	try:
 		opts, args = getopt.getopt(argv,"hi:s:u:d:r:t:f:")
 	except getopt.GetoptError:
-		print(helpText)
+		printj(helpText)
 		sys.exit(2)
 	for opt, arg in opts:
 		if opt == '-h':
-			print(helpText)
+			printj(helpText)
 			sys.exit()
 		elif opt in ("-u"):
 			totalNumberOfUsers = int(arg)
@@ -628,35 +658,35 @@ def main(argv):
 			if "," in arg: recommenders = arg.split(",") 
 			else: recommenders = [arg]
 	
-	print("Initialize simulation class...")
+	printj("Initialize simulation class...")
 	sim = simulation()
 	sim.delta, sim.totalNumberOfUsers, sim.numberOfNewItemsPI = delta, totalNumberOfUsers, newItemsPerIteration
 	sim.seed = seed
 	sim.outfolder = outfolder
 	sim.totalNumberOfIterations = iterationsPerRecommender*2 # one for the control and one for each rec
 
-	print("Create simulation instance...")
+	printj("Create simulation instance...")
 	sim.createSimulationInstance()
 	
-	print("Plotting users/items in 2d space...")
-	sim.plot2D(storeOnly = True)
+	# printj("Plotting users/items in 2d space...")
+	# sim.plot2D(storeOnly = True)
 
-	print("Run Control period...")
+	printj("Running Control period...", comments = "We first run a Control period without recommenders to deal with the cold start problem.")
 	sim.setEngine("Control")
 	sim.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender)])
-	print("Saving...")
+	printj("Saving...", comments = "Output pickle file is stored in your workspace.")
 	pickle.dump(sim.Data, open(sim.outfolder + '/Control-data.pkl', 'wb'))
-	#print("Plotting...")
+	#printj("Plotting...")
 	#sim.plot2D(drift = True, output = "2d-Control.pdf")
 	
-	print("Run Recommenders....")
+	printj("Running Recommenders....", comments = "The recommenders continue from the Control period.")
 	for rec in recommenders:
 		sim2 = copy.deepcopy(sim) 	# continue from the control period
 		sim2.setEngine(rec)
 		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
-		print("Saving for "+rec+"...")
+		printj("Saving for "+rec+"...", comments = "Output pickle file is stored in your workspace.")
 		pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
-		#print("Plotting for "+rec+"...")
+		#printj("Plotting for "+rec+"...")
 		#sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
    
     

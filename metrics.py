@@ -8,34 +8,107 @@ import random
 import time
 
 
-# # Expected Free Discovery (EFD)
-# def EFD(Rec,RecAsMatrix,M,U_):
-# 	A = []
-# 	for u in range(U_):
-# 		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
-# 		sum_ = 0
-# 		for i,item in enumerate(Rec[u]):
-# 			top = np.sum(Ui(item,M))
-# 			bottom = np.sum(np.sum(M))
-# 			sum_+= np.log2(top/bottom)*disc(i) 
-# 		A.append(sum_*(-Cu))
-# 	#print("EFD:",np.mean(A))
+''' 
 
-# # Expected Profile Distance (EPD)
-# def EPD(Rec,RecAsMatrix,M,U_,dist):
-# 	A = []
-# 	for u in range(U_):
-# 		#Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
-# 		sum_ = 0
-# 		Iuu = np.where(Iu(u, M)>=1)[0]
-# 		#print(Iuu)
-# 		for item in Rec[u]:
-# 			for itemj in Iuu:
-# 				sum_ += dist[item,itemj]
-# 		#print(sum_,np.sum(Iu(u, M)))
-# 		A.append(sum_/(np.sum(Iu(u, M)) ))
-# 	#print("EPD:",np.mean(A),A)
-# 	return np.mean(A)
+	Long Tail Novelty, as defined, is concerned with providing less popular, obvious
+	recommendations. Under this perspective, an item is novel if few people are aware
+	it exist, i. e. the item is far in the long tail of the popularity distribution.
+
+	 interested in avoiding recommending a highly reduced set of the most popular items, the socalled
+	short head, and promoting instead recommendations in the more numerous,
+	less popular long tail. The popularity of an item is defined by how many
+	users know about it, and an approximation to such information is readily available
+	in most recommendation scenarios as the user-item interaction data in the
+	form of a rating or play count matrix
+'''
+
+# Expected Popularity Complement (EPC)  
+def EPC(Rec,RecAsMatrix,M,U_,Rtest):
+	# Cu = 1/ np.sum(np.sum(RecAsMatrix))# temp
+	A = []
+	for u in range(U_):
+		if u not in Rec.keys(): continue
+		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
+		sum_ = 0
+		for i,item in enumerate(Rec[u]):
+			sum_+= (1 - np.sum(Ui(item,M))/U_)*disc(i)*Prel(item,u,Rtest)
+		A.append(sum_*Cu)
+	print("EPC:",np.mean(A))
+	return(np.mean(A))
+
+# Expected Free Discovery (EFD)
+# 4.3.2.1 Discovery-Based Measurement
+def EFD(Rec,RecAsMatrix,M,U_,Rtest):
+	A = []
+	for u in range(U_):
+		if u not in Rec.keys(): continue
+		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
+		sum_ = 0
+		for i,item in enumerate(Rec[u]):
+			top = np.sum(Ui(item,M))
+			bottom = np.sum(np.sum(M))
+			sum_+= np.log2(top/bottom)*disc(i)*Prel(item,u,Rtest)
+		A.append(sum_*(-Cu))
+	print("EFD:",np.mean(A))
+	return np.mean(A)
+			
+''' 
+	A related but different notion considers the Unexpectedness (Murakami et al., 2008;
+	Zhang et al., 2012; Adamopoulos and Tuzhilin, in press) involved in receiving recommendations
+	that are novel in the sense that they are different or unfamiliar to
+	the user experience. 
+'''
+# Expected Profile Distance (EPD)
+def EPD(Rec,RecAsMatrix,M,U_,Rtest,dist):
+	A = [] 
+	for u in range(U_):
+		if u not in Rec.keys(): continue
+		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
+		Cu_ = np.sum([Prel(i,u,Rtest) for i in np.where(Iu(u, M)>=1)[0]])
+		Iuu  = np.where(Iu(u, M)>=1)[0]
+		sum_ = 0
+		for i,item in enumerate(Rec[u]):
+			for itemj in Iuu:
+				sum_ += dist[item,itemj]*disc(i)*Prel(item,u,Rtest)*Prel(itemj,u,Rtest)
+		A.append((Cu/Cu_)*sum_)
+		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
+		#time.sleep(1)
+	print("EPD",np.mean(A))
+	return np.mean(A)
+
+# Expected Intra-List Distance (EILD)
+def EILD(Rec,RecAsMatrix,M,U_,Rtest,dist):
+	A = [] 
+	for u in range(U_):
+		if u not in Rec.keys(): continue
+		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
+		sum_ = 0
+		for i,item in enumerate(Rec[u]):
+			Ci = Cu/np.sum([disc(max(0,j-i))*Prel(itemj,u,Rtest) for j,itemj in enumerate(Rec[u])])
+			for j,itemj in enumerate(Rec[u]):
+				if j>i:
+					sum_ += dist[item,itemj]*disc(i)*disc(max(0,j-i))*Prel(item,u,Rtest)*Prel(itemj,u,Rtest)*Ci
+		A.append(sum_)
+		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
+		#time.sleep(1)
+	print("EILD",np.mean(A))
+	return np.mean(A)
+
+
+# Intra-List Distance 
+def ILD(Rec,RecAsMatrix,M,U_,dist):
+	allR = np.where(np.sum(RecAsMatrix,axis=0)>=1)[0]
+	#print(allR)
+	sum_ = 0
+	for item in allR:
+		for itemj in allR:
+			sum_ += dist[item,itemj]
+	R_ = np.sum(np.sum(RecAsMatrix))
+	#print("ILD:",1/(R_*(R_-1))*sum_ )
+	return (1/(R_*(R_-1)))*sum_ 
+
+
+
 
 
 # user and item interaction profiles
@@ -47,16 +120,17 @@ def Ui(i, M):
 
 def Prel(i, u, Mr):
 	if Mr[u,i]>=1: return 1
-	else: return 0
+	else: return 0.01
 
 # user rec profile
 def R(u,R):
 	return R[u,:]
 
 # simple exponential discount
+#disc(kj| ki) = disc(max(0, kj −ki)) 
 def disc(k):
 	beta = 0.9
-	return np.power(beta, k-1)
+	return np.power(beta, k)
 
 
 '''' 
@@ -86,31 +160,6 @@ def computeGinis(S, C):
 	G2 = gini(np.sum(S,axis=0))
 	return G2 - G1
 
-# Expected Popularity Complement (EPC) 
-def EPC(Rec,RecAsMatrix,M,U_,Rtest):
-	# Cu = 1/ np.sum(np.sum(RecAsMatrix))# temp
-	A = []
-	for u in range(U_):
-		if u not in Rec.keys(): continue
-		Cu = 1/np.sum([disc(i) for i,item in enumerate(Rec[u])])
-		sum_ = 0
-		for i,item in enumerate(Rec[u]):
-			sum_+= (1 - np.sum(Ui(item,M))/U_)*disc(i)#*Prel(item,u,Rtest)
-		A.append(sum_*Cu)
-	#print("EPC:",np.mean(A))
-	return(np.mean(A))
-			
-# Intra-List Distance
-def ILD(Rec,RecAsMatrix,M,U_,dist):
-	allR = np.where(np.sum(RecAsMatrix,axis=0)>=1)[0]
-	#print(allR)
-	sum_ = 0
-	for item in allR:
-		for itemj in allR:
-			sum_ += dist[item,itemj]
-	R_ = np.sum(np.sum(RecAsMatrix))
-	#print("ILD:",1/(R_*(R_-1))*sum_ )
-	return (1/(R_*(R_-1)))*sum_ 
 
 
 def metrics(M,Rec,ItemFeatures,dist,Mafter):
@@ -120,9 +169,12 @@ def metrics(M,Rec,ItemFeatures,dist,Mafter):
 	RecAsMatrix = np.zeros((U_, I_))
 	for u in Rec.keys():
 		RecAsMatrix[u,Rec[u]]=1
-
-	return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), "ILD"
-	:ILD(Rec,RecAsMatrix,M,U_,dist) }
+	
+	return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), 
+	"ILD": ILD(Rec,RecAsMatrix,M,U_,dist), 
+	"EFD": EFD(Rec,RecAsMatrix,M,U_,Rtest), 
+	"EPD": EPD(Rec,RecAsMatrix,M,U_,Rtest,dist),
+	"EILD": EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)}
 	# EPC(Rec,RecAsMatrix,M,U_)
 	# EFD(Rec,RecAsMatrix,M,U_)
 	# ILD(Rec,RecAsMatrix,M,U_,dist)
