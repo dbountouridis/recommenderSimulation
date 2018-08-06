@@ -49,6 +49,7 @@ def choice(population, weights):
     idx = bisect.bisect(cdf_vals, x)
     return population[idx]
 
+# standardize json output
 def standardize(num, precision = 2):
 	if precision == 2:
 		return float("%.2f"%(num))
@@ -69,9 +70,62 @@ def plotlyjson(x=[],y=[],type_=[],mode="none",title="",ytitle = "",xtitle = ""):
 	}
 	return {"data":data,"layout":layout}
 
+# currently not used
 def printj(text, comments=""):
 	json = {"action":text,"comments":comments}
 	print(json)
+
+# generate initial article prominence
+def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
+	counts = dict(zip(categories, [len(np.where(Classes==i)[0]) for i,c in enumerate(categories) ]))
+	items = len(Classes)
+	population = categories
+	
+	# chi square distribution with two degrees of freedom
+	df = 2
+	mean, var, skew, kurt = chi2.stats(df, moments='mvsk')
+	x = np.linspace(chi2.ppf(0.01, df), chi2.ppf(0.99, df), items)
+	rv = chi2(df)
+	
+	Z = {}
+	for c in categories: Z.update({c:[]})		
+	
+	# assign topic to z prominence without replacement
+	for i in rv.pdf(x):
+		c = choice(population, categoriesSalience)
+		while counts[c]<=0:
+			c = choice(population, categoriesSalience)
+		counts[c]-=1
+		Z[c].append(i/0.5)
+	if not plot : return Z
+
+	# plotting
+	min_= np.min([len(Z[i]) for i in Z.keys()])
+	x = []
+	for k in Z.keys():
+		x.append(Z[k][:min_])
+	print(np.array(x).T)
+	# set sns context
+	sns.set_context("notebook", font_scale=1.5, rc={"lines.linewidth": 1.2,'text.usetex' : True})
+	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+	matplotlib.pyplot.rc('text', usetex=True)
+	matplotlib.pyplot.rc('font', family='serif')
+	flatui = sns.color_palette("husl", 8)
+	#fig, ax = plt.subplots()
+	fig, axes = matplotlib.pyplot.subplots(nrows=1, ncols=1, figsize=(8, 6))
+	ax0= axes
+	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+	t = ["entertainment","business","sport","politics","tech"]
+	colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(t))]
+	ax0.hist(x, 10, histtype='bar',stacked=True, color=colors,label=categories)
+	ax0.legend(prop={'size': 15})
+	ax0.set_xlabel("$z^0$")
+	ax0.set_ylabel("counts")
+	sns.despine()
+	matplotlib.pyplot.show()
+
+	return Z
+
 
 
 class simulation(object):
@@ -90,7 +144,7 @@ class simulation(object):
 		self.percentageOfActiveUsersPI = 1.0 
 		
 		# Amount of distance covered when a user move towards an item 
-		self.m = 0.05    
+		self.m = 0.025    
 
 		# Inputs: articles
 		self.totalNumberOfIterations = 20
@@ -103,20 +157,21 @@ class simulation(object):
 		self.n = 5                          
 		
 		# Choice model
-		self.k = 14                          
+		self.k = 18                          
 		self.delta = 5                     
 
-		# Awareness, setting selectes predefined awareness settings
-		self.theta = 0.1      
-		self.thetaDot = 0.5
-		self.Lambda = 0.8 
+		# Awareness, 
+		self.theta = 0.07      	# proximity decay
+		self.thetaDot = 0.5		# prominence decay
+		self.Lambda = 0.6 
 		
 		# slope of salience decrease function
 		self.p = 0.1 
 		      	        
 		self.userVarietySeeking = []
 		self.categories = ["entertainment","business","sport","politics","tech"]
-		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] # arbitrary assigned
+		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] 
+		self.categoriesFrequency = [0.2, 0.2, 0.2, 0.2, 0.2]
 		self.AnaylysisInteractionData = []
 		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": []}
 		self.outfolder = ""
@@ -136,45 +191,51 @@ class simulation(object):
 		printj("Item space projection selected:",R[r])
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection'+str(R[r])+'.pkl','rb'))
 		gmm = GaussianMixture(n_components=5, random_state=S[r]).fit(X)
-		samples_,self.ItemsClass = gmm.sample(self.I)
-		self.Items = samples_/55  # scale down to -1, 1 range
-		self.ItemFeatures = gmm.predict_proba(samples_)
+		
+		self.Items = []
+		self.ItemsClass = []
+		samples_, classes_ = gmm.sample(self.I*10)
+		for c, category in enumerate(self.categories):
+			selection = samples_[np.where(classes_ == c)][:int(self.categoriesFrequency[c]*self.I)]
+			print(category, len(selection), self.I)
+			if len(self.Items) == 0:
+				self.Items = np.array(selection)
+			else:
+				self.Items = np.append(self.Items, selection, axis=0)
+			self.ItemsClass+=[c for i in range(len(selection))]
+		#samples_, self.ItemsClass = gmm.sample(self.I)
+		self.ItemsClass = np.array(self.ItemsClass)
+		self.ItemFeatures = gmm.predict_proba(self.Items)
+		self.Items = self.Items/55  # scale down to -1, 1 range
 		self.ItemDistances = spatial.distance.cdist(self.ItemFeatures, self.ItemFeatures, metric='cosine')
-
-		# Spearman correlation test between feature representations
-		# dist = spatial.distance.cdist(self.Items, self.Items)[0]
-		# dist2 = spatial.distance.cdist(self.ItemFeatures, self.ItemFeatures)[0]
-		# printj(stats.pearsonr(dist,dist2))
-		# printj(stats.spearmanr(dist,dist2))
-
-		# Fitting a guassian on the pairwise item distances
-		# (mu, sigma) = norm.fit(dist)
-		# printj(mu, sigma)
-		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
-		# ax[0].hist(dist, normed=True)
-		# matplotlib.pyplot.show()
 
 		# generate a random order of item availability
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
 		random.shuffle(self.itemOrderOfAppearance)
 
-		# Item salience based on topic salience and truncated normal distibution
+		Z0 = initialProminceZ0(self.categories, self.categoriesSalience, self.ItemsClass ,plot = True)
 		self.initialR = np.zeros(self.I)
-		#df = 2
-		#mean, var, skew, kurt = chi2.stats(df, moments='mvsk')
-		#rv = chi2(df)
-		fig, ax = matplotlib.pyplot.subplots()
-		for i in range(len(self.categories)):
-			indeces = np.where(self.ItemsClass==i)[0]
-			lower, upper = 0, 1
-			mu, sigma = self.categoriesSalience[i], 0.1
-			a = (lower - mu) / sigma
-			b=  (upper - mu) / sigma
-			X = stats.truncnorm( a, b, loc=mu, scale=sigma)
-			#X = 10*X.rvs(len(indeces), random_state = self.seed)
-			self.initialR[indeces] = X.rvs(len(indeces), random_state = self.seed) #1-rv.pdf(X)/0.5
-		ax.hist(self.initialR, normed=True)
-		matplotlib.pyplot.show()
+		for c, category in enumerate(self.categories): 
+			indeces = np.where(self.ItemsClass==c)[0]
+			self.initialR[indeces] = Z0[category]
+
+		# # Item salience based on topic salience and truncated normal distibution
+		# self.initialR = np.zeros(self.I)
+		# #df = 2
+		# #mean, var, skew, kurt = chi2.stats(df, moments='mvsk')
+		# #rv = chi2(df)
+		# fig, ax = matplotlib.pyplot.subplots()
+		# for i in range(len(self.categories)):
+		# 	indeces = np.where(self.ItemsClass==i)[0]
+		# 	lower, upper = 0, 1
+		# 	mu, sigma = self.categoriesSalience[i], 0.1
+		# 	a = (lower - mu) / sigma
+		# 	b=  (upper - mu) / sigma
+		# 	X = stats.truncnorm( a, b, loc=mu, scale=sigma)
+		# 	#X = 10*X.rvs(len(indeces), random_state = self.seed)
+		# 	self.initialR[indeces] = Z0 
+		# ax.hist(self.initialR, normed=True)
+		# matplotlib.pyplot.show()
 			
 
 		# Generate users/customers
@@ -195,8 +256,6 @@ class simulation(object):
 		# self.Users[:,0] = length * np.cos(angle)
 		# self.Users[:,1] = length * np.sin(angle)
 		
-		# size of session per user (e.g. amount of articles read per day)
-		self.UserSessionSize = [1+int(random.random()*3) for i in range(self.totalNumberOfUsers)]
 		
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
 		# Normal distribution centered around 0.05
@@ -242,7 +301,6 @@ class simulation(object):
 		df["Iteration index"] = np.array([i for i in range(len(self.diversityMetrics["EPC"])) ])
 		df["MML method"] = np.array([self.engine for i in  range(len(self.diversityMetrics["EPC"]))])
 		df.to_pickle(self.outfolder + "/metrics analysis-"+self.engine+".pkl")
-
 
 	# if a new recommendation engine is set, then delete the data points so far
 	def setEngine(self, engine):
@@ -371,8 +429,11 @@ class simulation(object):
 		Json.update({"Completed" : standardize(epoch_index+1)/len(iterationRange)})
 		Json.update({"(median) Number of items in user's awareness" : standardize(np.median(np.sum(Awareness,axis=1)))})
 		Json.update({"Number of available, non-available items" : [len(activeItemIndeces),len(nonActiveItemIndeces) ]})
-		Json.update({"(mean) Number of items in user's awareness due to proximity" : standardize(np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1)))})
-		Json.update({"(mean) Number of items in user's awareness due to popularity" : standardize(np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1)))})
+		toProx = np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1))
+		Json.update({"(mean) Number of items in user's awareness due to proximity" : standardize(toProx)})
+		toPop = np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1))
+		Json.update({"(mean) Number of items in user's awareness due to popularity" : standardize(toPop)})
+		Json.update({"(mean) Ratio of items in user's awareness due to proximity/popularity" : standardize( toProx/(toPop+toProx))})
 		
 		ApA = {}
 		for i in range(1,10):
@@ -479,13 +540,15 @@ class simulation(object):
 					Awareness[user, np.where(self.Data["Sales History"][user,Rec]>0)[0] ] = 0		
 
 				# select articles
-				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(user, Rec, Awareness[user,:], control = self.engine=="Control", sessionSize = self.UserSessionSize[user])
+				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(user, Rec, Awareness[user,:], control = self.engine=="Control", sessionSize = int(np.random.normal(6, 2)))
 
 				# add item purchase to histories
 				self.Data["Sales History"][user, indecesOfChosenItems] += 1		
 						
 				# compute new user position (we don't store the position in the session, only after it is over)
-				self.computeNewPositionOfUserToItem( user, indecesOfChosenItems, epoch)
+				
+				if self.engine is not "Control":
+					self.computeNewPositionOfUserToItem( user, indecesOfChosenItems, epoch)
 
 				# store some data for analysis
 				for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
@@ -566,69 +629,69 @@ class simulation(object):
 			recommendations.update({user_id:rec})
 		return recommendations 
 	
-	# # plotting	    
-	# def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
+	# plotting	    
+	def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
 
-	# 	sns.set_context("notebook", font_scale=1.2, rc={"lines.linewidth": 1.2})
-	# 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
-	# 	flatui = sns.color_palette("husl", 8)
-	# 	f, ax = matplotlib.pyplot.subplots(1,1, figsize=(6,6), sharey=True)
+		sns.set_context("notebook", font_scale=1.2, rc={"lines.linewidth": 1.2})
+		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+		flatui = sns.color_palette("husl", 8)
+		f, ax = matplotlib.pyplot.subplots(1,1, figsize=(6,6), sharey=True)
 
-	# 	# products
-	# 	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
-	# 	colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(self.categories))]
+		# products
+		cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+		colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(self.categories))]
 		
-	# 	# if no sales history yet, display items with prominence as 3rd dimension
-	# 	if np.sum(np.sum(self.Data["Sales History"]))==0:
-	# 		n = np.sum(self.Data["Sales History"],axis=0)
-	# 		for i in range(self.I): 
-	# 			color = colors[self.ItemsClass[i]]
-	# 			s = self.Data["ItemProminence"][i]*40
-	# 			ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=s,alpha=0.5)
-	# 	else:
-	# 		# KDE plot
-	# 		n = np.sum(self.Data["Sales History"],axis=0)
-	# 		for cat in range(len(self.categories)): # 5 topic spaces
-	# 			indeces=np.where(self.ItemsClass==cat)[0]
-	# 			x = []
-	# 			for i in indeces:
-	# 				if n[i]>0:
-	# 					for k in range(int(n[i])): x.append([self.Items[i,0],self.Items[i,1]])
-	# 			ax = sns.kdeplot(np.array(x)[:,0], np.array(x)[:,1], shade=True, shade_lowest=False, alpha = 0.4, cmap=cmaps[cat],kernel='gau')
+		# if no sales history yet, display items with prominence as 3rd dimension
+		if np.sum(np.sum(self.Data["Sales History"]))==0:
+			n = np.sum(self.Data["Sales History"],axis=0)
+			for i in range(self.I): 
+				color = colors[self.ItemsClass[i]]
+				s = self.Data["ItemProminence"][i]*40
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker='o', c=color,s=s,alpha=0.5)
+		else:
+			# KDE plot
+			n = np.sum(self.Data["Sales History"],axis=0)
+			for cat in range(len(self.categories)): # 5 topic spaces
+				indeces=np.where(self.ItemsClass==cat)[0]
+				x = []
+				for i in indeces:
+					if n[i]>0:
+						for k in range(int(n[i])): x.append([self.Items[i,0],self.Items[i,1]])
+				ax = sns.kdeplot(np.array(x)[:,0], np.array(x)[:,1], shade=True, shade_lowest=False, alpha = 0.4, cmap=cmaps[cat],kernel='gau')
 			
-	# 		# scatter
-	# 		for i in range(self.I): 
-	# 			color = colors[self.ItemsClass[i]]
-	# 			if n[i]>=1:
-	# 				v = 0.4+ n[i]/np.max(n)*0.4
-	# 				c = (1,0,0.0,v)
-	# 				s = 2+n[i]/np.max(n)*40
-	# 				marker = 'o'
-	# 			else:
-	# 				color = (0,0,0,0.1)
-	# 				v = 0.1
-	# 				s = 10
-	# 				marker = 'x'
-	# 			ax.scatter(self.Items[i,0], self.Items[i,1], marker=marker, c=color,s=s,alpha=v)	
+			# scatter
+			for i in range(self.I): 
+				color = colors[self.ItemsClass[i]]
+				if n[i]>=1:
+					v = 0.4+ n[i]/np.max(n)*0.4
+					c = (1,0,0.0,v)
+					s = 2+n[i]/np.max(n)*40
+					marker = 'o'
+				else:
+					color = (0,0,0,0.1)
+					v = 0.1
+					s = 10
+					marker = 'x'
+				ax.scatter(self.Items[i,0], self.Items[i,1], marker=marker, c=color,s=s,alpha=v)	
 		
-	# 	# final user position as a circle
-	# 	for i in range(len(self.Users[:,1])):
-	# 		ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='D', c='k',s=8, alpha = 0.4 )
+		# final user position as a circle
+		for i in range(len(self.Users[:,1])):
+			ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='D', c='k',s=8, alpha = 0.4 )
 		
-	# 	# user drift
-	# 	if drift:
-	# 		for i in range(len(self.Users[:,1])):
-	# 			for j in range(len(self.Data["X"][0,:])-1):
-	# 				if self.Data["X"][i,j+1]!=0 and self.Data["Y"][i,j+1]!=0:
-	# 					ax.plot([self.Data["X"][i,j], self.Data["X"][i,j+1]], [self.Data["Y"][i,j], self.Data["Y"][i,j+1]], 'k-', lw=1, alpha =0.4)
+		# user drift
+		if drift:
+			for i in range(len(self.Users[:,1])):
+				for j in range(len(self.Data["X"][0,:])-1):
+					if self.Data["X"][i,j+1]!=0 and self.Data["Y"][i,j+1]!=0:
+						ax.plot([self.Data["X"][i,j], self.Data["X"][i,j+1]], [self.Data["Y"][i,j], self.Data["Y"][i,j+1]], 'k-', lw=1, alpha =0.4)
 
-	# 	ax.set_xlabel(self.engine)
-	# 	ax.set_aspect('equal', adjustable='box')
-	# 	ax.set_xlim([-1.1,1.1])
-	# 	ax.set_ylim([-1.1,1.1])
-	# 	matplotlib.pyplot.tight_layout()
-	# 	matplotlib.pyplot.savefig(self.outfolder + "/" + output)
-	# 	if not storeOnly: matplotlib.pyplot.show()
+		ax.set_xlabel(self.engine)
+		ax.set_aspect('equal', adjustable='box')
+		ax.set_xlim([-1.1,1.1])
+		ax.set_ylim([-1.1,1.1])
+		matplotlib.pyplot.tight_layout()
+		matplotlib.pyplot.savefig(self.outfolder + "/" + output)
+		if not storeOnly: matplotlib.pyplot.show()
 
  
 def main(argv):
@@ -676,8 +739,8 @@ def main(argv):
 	sim.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender)])
 	printj("Saving...", comments = "Output pickle file is stored in your workspace.")
 	pickle.dump(sim.Data, open(sim.outfolder + '/Control-data.pkl', 'wb'))
-	#printj("Plotting...")
-	#sim.plot2D(drift = True, output = "2d-Control.pdf")
+	# printj("Plotting...")
+	# sim.plot2D(drift = True, output = "2d-Control.pdf")
 	
 	printj("Running Recommenders....", comments = "The recommenders continue from the Control period.")
 	for rec in recommenders:
@@ -686,8 +749,8 @@ def main(argv):
 		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
 		printj("Saving for "+rec+"...", comments = "Output pickle file is stored in your workspace.")
 		pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
-		#printj("Plotting for "+rec+"...")
-		#sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
+		printj("Plotting for "+rec+"...")
+		sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
    
     
 if __name__ == "__main__":
