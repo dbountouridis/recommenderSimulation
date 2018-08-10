@@ -71,6 +71,7 @@ def analysis(infolder):
 			df = df.append(df_, ignore_index=True)
 	print("Dataframe:")
 	print(df.describe())
+	print(df)
 
 	# print("Checking for issues...")
 	# for g, group in df.groupby('Item'):
@@ -123,6 +124,19 @@ def analysis(infolder):
 	# 	print(group)
 	# 	group.plot.bar(stacked=True);
 	# 	plt.show()
+	
+	for g, group in df.groupby("MML method"):
+		print(g)
+		D = []
+		for i,group3 in group.groupby("Class/Topic"):
+			print(i)
+			total = np.array(group3).shape[0]
+			for t,group2 in group3.groupby("User class"):
+				if t==i:
+					print(np.array(group2).shape[0]/total)
+					D.append(np.array(group2).shape[0]/total)
+		print(np.mean(D),np.std(D))
+	
 
 
 	# # plot
@@ -133,11 +147,32 @@ def analysis(infolder):
 	# g.despine(left=True)
 	# plt.savefig(infolder + "/Analysis - Selected articles that were recommended.pdf")
 	# #plt.show()
-	for g, group in df.groupby("MML method"):
-		total = np.array(group).shape[0]
-		print(g)
-		for i,group3 in group.groupby("Was Recommended"):
-			print(i,np.array(group3).shape[0]/total)
+	df_ = df.loc[df['MML method'] != "Control"]
+	df2 = df_.loc[df_['InInitialAwareness'] == False]
+	# print(np.array(df2["Item"]).shape[0])
+	# df2 = df_.loc[df_['InInitialAwareness'] == True]
+	# print(np.array(df2["Item"]).shape[0])
+	W = []
+	for g_, group_ in df.groupby("MML method"):
+		D = []
+		D_= []
+		if g_=="Control": continue
+		for g, group in group_.groupby("Item"):
+			total = np.array(group).shape[0]
+			wr = np.where(group["Was Recommended"]==1)[0].shape[0]
+			wnr = np.where(group["Was Recommended"]==0)[0].shape[0]
+
+			D.append(wr/total)
+			W.append(wr/total)
+			D_.append(wnr/total)
+			# time.sleep(1)
+			# for i,group3 in group.groupby("Was Recommended"):
+			# 	if not i: 
+			# 		D.append(np.array(group3).shape[0]/total)
+		print(g_,":",np.mean(D),np.std(D),D[:10])
+		print(g_,":",np.mean(D_),np.std(D_),D_[:10])
+	print("Overall rec:",np.mean(W),np.std(W))
+	
 
 
 	g = sns.factorplot("Was Recommended",col="MML method", kind="count", data=df, capsize=.2, palette=sns.color_palette("BuGn_r",15), size=3, aspect=.75,  legend = True, legend_out=False,dodge=True)
@@ -146,6 +181,14 @@ def analysis(infolder):
 
 	g = sns.factorplot(y="Agreement between deterministic and stochastic choice",x="MML method", kind="bar", data=df, capsize=.2, palette=flatui, size=4, aspect=1.5,  legend = True, legend_out=False,dodge=True, orient = "v")
 	plt.savefig(infolder + "/Analysis - Agreement between deterministic and stochastic choice.pdf")
+
+	g = sns.factorplot(y="Class/Topic agreement between deterministic and stochastic choice",x="MML method", kind="bar", data=df, capsize=.2, palette=flatui, size=4, aspect=1.5,  legend = True, legend_out=False,dodge=True, orient = "v")
+	plt.savefig(infolder + "/Analysis - Class-Topic Agreement between deterministic and stochastic choice.pdf")
+	#plt.show()
+
+	
+	g = sns.factorplot(y="Class/Topic agreement between choice and users main topic",x="MML method", kind="bar", data=df, capsize=.2, palette=flatui, size=4, aspect=1.5,  legend = True, legend_out=False,dodge=True, orient = "v")
+	plt.savefig(infolder + "/Analysis - Class-Topic agreement between choice and users main topic.pdf")
 	#plt.show()
 
 	g = sns.factorplot("Item Age",col="MML method", kind="count", data=df, capsize=.2, palette=sns.color_palette("BuGn_r",15), size=3, aspect=.75,  legend = True, legend_out=False,dodge=True)

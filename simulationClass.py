@@ -17,8 +17,8 @@ import sys, getopt
 import copy
 import json
 import metrics
-import matplotlib
-matplotlib.use('Agg')
+#import matplotlib
+#matplotlib.use('Agg')
 # # force headless backend, or set 'backend' to 'Agg'
 # # in your ~/.matplotlib/matplotlibrc
 # matplotlib.use('Agg')
@@ -99,30 +99,30 @@ def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
 		Z[c].append(i/0.5)
 	if not plot : return Z
 
-	# plotting
-	min_= np.min([len(Z[i]) for i in Z.keys()])
-	x = []
-	for k in Z.keys():
-		x.append(Z[k][:min_])
-	print(np.array(x).T)
-	# set sns context
-	sns.set_context("notebook", font_scale=1.5, rc={"lines.linewidth": 1.2,'text.usetex' : True})
-	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
-	matplotlib.pyplot.rc('text', usetex=True)
-	matplotlib.pyplot.rc('font', family='serif')
-	flatui = sns.color_palette("husl", 8)
-	#fig, ax = plt.subplots()
-	fig, axes = matplotlib.pyplot.subplots(nrows=1, ncols=1, figsize=(8, 6))
-	ax0= axes
-	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
-	t = ["entertainment","business","sport","politics","tech"]
-	colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(t))]
-	ax0.hist(x, 10, histtype='bar',stacked=True, color=colors,label=categories)
-	ax0.legend(prop={'size': 15})
-	ax0.set_xlabel("$z^0$")
-	ax0.set_ylabel("counts")
-	sns.despine()
-	matplotlib.pyplot.show()
+	# # plotting
+	# min_= np.min([len(Z[i]) for i in Z.keys()])
+	# x = []
+	# for k in Z.keys():
+	# 	x.append(Z[k][:min_])
+	# print(np.array(x).T)
+	# # set sns context
+	# sns.set_context("notebook", font_scale=1.5, rc={"lines.linewidth": 1.2,'text.usetex' : True})
+	# sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+	# matplotlib.pyplot.rc('text', usetex=True)
+	# matplotlib.pyplot.rc('font', family='serif')
+	# flatui = sns.color_palette("husl", 8)
+	# #fig, ax = plt.subplots()
+	# fig, axes = matplotlib.pyplot.subplots(nrows=1, ncols=1, figsize=(8, 6))
+	# ax0= axes
+	# cmaps= ['Blues','Reds','Greens','Oranges','Greys']
+	# t = ["entertainment","business","sport","politics","tech"]
+	# colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(t))]
+	# ax0.hist(x, 10, histtype='bar',stacked=True, color=colors,label=categories)
+	# ax0.legend(prop={'size': 15})
+	# ax0.set_xlabel("$z^0$")
+	# ax0.set_ylabel("counts")
+	# sns.despine()
+	# matplotlib.pyplot.show()
 
 	return Z
 
@@ -144,7 +144,7 @@ class simulation(object):
 		self.percentageOfActiveUsersPI = 1.0 
 		
 		# Amount of distance covered when a user move towards an item 
-		self.m = 0.025    
+		self.m = 0.05    
 
 		# Inputs: articles
 		self.totalNumberOfIterations = 20
@@ -157,13 +157,15 @@ class simulation(object):
 		self.n = 5                          
 		
 		# Choice model
-		self.k = 18                          
-		self.delta = 5                     
+		self.k = 20                          
+		self.delta = 5
+		self.meanSessionSize = 6                     
 
 		# Awareness, 
 		self.theta = 0.07      	# proximity decay
 		self.thetaDot = 0.5		# prominence decay
 		self.Lambda = 0.6 
+		self.V = 40
 		
 		# slope of salience decrease function
 		self.p = 0.1 
@@ -185,19 +187,22 @@ class simulation(object):
 		self.I = self.totalNumberOfIterations*self.numberOfNewItemsPI                    
 		self.percentageOfActiveItems = self.numberOfNewItemsPI/self.I 
 
-		# Generate items/articles from the BBC data
+		# GMM on items/articles from the BBC data
 		R, S = [5,1,6,7], [5,2,28,28]
 		r = int(random.random()*4)
 		printj("Item space projection selected:",R[r])
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection'+str(R[r])+'.pkl','rb'))
 		gmm = GaussianMixture(n_components=5, random_state=S[r]).fit(X)
 		
+		# normalize topic weights to sum into 1
+		self.categoriesFrequency = [np.round(i,decimals=1) for i in self.categoriesFrequency/np.sum(self.categoriesFrequency)]
+		
+		# Generate items/articles from the BBC data projection
 		self.Items = []
 		self.ItemsClass = []
 		samples_, classes_ = gmm.sample(self.I*10)
 		for c, category in enumerate(self.categories):
 			selection = samples_[np.where(classes_ == c)][:int(self.categoriesFrequency[c]*self.I)]
-			print(category, len(selection), self.I)
 			if len(self.Items) == 0:
 				self.Items = np.array(selection)
 			else:
@@ -213,29 +218,21 @@ class simulation(object):
 		self.itemOrderOfAppearance = np.arange(self.I).tolist()
 		random.shuffle(self.itemOrderOfAppearance)
 
+		# assign initial prominence
+		self.categoriesSalience = [np.round(i,decimals=2) for i in self.categoriesSalience/np.sum(self.categoriesSalience)]
+		print(self.categoriesSalience)
 		Z0 = initialProminceZ0(self.categories, self.categoriesSalience, self.ItemsClass ,plot = True)
 		self.initialR = np.zeros(self.I)
 		for c, category in enumerate(self.categories): 
 			indeces = np.where(self.ItemsClass==c)[0]
 			self.initialR[indeces] = Z0[category]
 
-		# # Item salience based on topic salience and truncated normal distibution
-		# self.initialR = np.zeros(self.I)
-		# #df = 2
-		# #mean, var, skew, kurt = chi2.stats(df, moments='mvsk')
-		# #rv = chi2(df)
-		# fig, ax = matplotlib.pyplot.subplots()
-		# for i in range(len(self.categories)):
-		# 	indeces = np.where(self.ItemsClass==i)[0]
-		# 	lower, upper = 0, 1
-		# 	mu, sigma = self.categoriesSalience[i], 0.1
-		# 	a = (lower - mu) / sigma
-		# 	b=  (upper - mu) / sigma
-		# 	X = stats.truncnorm( a, b, loc=mu, scale=sigma)
-		# 	#X = 10*X.rvs(len(indeces), random_state = self.seed)
-		# 	self.initialR[indeces] = Z0 
-		# ax.hist(self.initialR, normed=True)
+		# dd = spatial.distance.cdist(self.Items, self.Items,metric = 'euclidean')[0]
+		# print(np.mean(dd),np.std(dd))
+		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
+		# ax[0].hist(dd, normed=True)
 		# matplotlib.pyplot.show()
+
 			
 
 		# Generate users/customers
@@ -245,6 +242,9 @@ class simulation(object):
 			while spatial.distance.cdist([user], [[0,0]],metric = 'euclidean')[0][0]>1.1:
 				user = np.random.uniform(-1,1,(1,2))[0]
 			self.Users[i] = user
+
+		self.UsersClass = [gmm.predict([self.Users[i]*55])[0] for i in range(self.totalNumberOfUsers)]
+		#print(self.UsersClass)
 
 	
 		# from bivariate
@@ -293,7 +293,7 @@ class simulation(object):
 		printj("Exporting per iteration data...", comments = 'Two output pickle files are stored in your workspace.')
 		
 		# purchase history
-		df = pd.DataFrame(self.AnaylysisInteractionData,columns=["Iteration index","User","MML method","Item","Item Age","Item Prominence","Class/Topic","Was Recommended","Agreement between deterministic and stochastic choice", "Item has been recommended before"])
+		df = pd.DataFrame(self.AnaylysisInteractionData,columns=["Iteration index","User","MML method","Item","Item Age","Item Prominence","Class/Topic","Was Recommended","Agreement between deterministic and stochastic choice", "Item has been recommended before","Class/Topic agreement between deterministic and stochastic choice", "Class/Topic agreement between choice and users main topic","User class","InInitialAwareness"])
 		df.to_pickle(self.outfolder + "/dataframe for simple analysis-"+self.engine+".pkl")
 
 		# metrics
@@ -336,8 +336,8 @@ class simulation(object):
 
 	# Probabilistic choice model
 	def ChoiceModel(self, user, Rec, w, control = False, sessionSize =1):
-		random.seed(self.seed)
-		np.random.seed(self.seed)
+		#random.seed(self.seed)
+		#np.random.seed(self.seed)
 
 		Distances = self.Data["D"][user,:]
 		Similarity = -self.k*np.log(Distances)  
@@ -387,9 +387,11 @@ class simulation(object):
 		self.Data["Y"][user,iteration] = y
 
 	# decrease of salience/prominence/prominence
-	def prominenceFunction(self, currentProminence, life):
+	def prominenceFunction(self, initialProminence, life):
 		x = life
-		y = (-self.p*x+1)*currentProminence
+		# y = initialProminence*np.power(0.8,x-1)
+		# if y<=0.05: y=0
+		y = (-self.p*(x-1)+1)*initialProminence
 		return max([y, 0])
 
 	# temporal adaptations after the end of each iteration
@@ -453,17 +455,20 @@ class simulation(object):
 		print(json.dumps(Json, sort_keys=True, indent=4))
 
 		# choice figures
-		Json.update({"Figures":[]})
-	
+		# Json.update({"Figures":[]})
+		f = {}
 		values = []
 		labels = []
-		title = "Distribution of choice per topic"
+		type_ = "pie"
+		title = "Read articles by topic"
 		for i in range(len(self.categories)):
 			labels.append(self.categories[i])
 			indeces = np.where(self.ItemsClass==i)[0]
 			A = self.Data["Sales History"][:,indeces]
+			f.update({self.categories[i] : standardize(np.sum(np.sum(A,axis=1))/np.sum(np.sum(self.Data["Sales History"],axis=1))) })
 			values.append( standardize(np.sum(np.sum(A,axis=1))) )
-		Json["Figures"].append( plotlyjson(x = labels, y = values, type_ = "pie" ,mode = "none",title = title, ytitle = "",xtitle = ""))
+		Json.update({"Read articles by topic" : f})
+		Json.update({"Figure1" : {"values": values,"labels": labels,"type":  type_,"title":title }})
 
 		x = [i for i in range(1,11)]
 		y = []
@@ -474,17 +479,54 @@ class simulation(object):
 			A = self.Data["Sales History"] - SalesHistoryBefore
 			A = A[:,indeces]
 			y.append( standardize(np.sum(np.sum(A,axis=1))) )
-		Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "bar" ,mode = "none",title = title, ytitle = "Counts",xtitle = "Article age in days/iterations"))
+		Json.update({"Figure4" : {"x": x,"y": y,"type": type_,"title": title, "xaxis":{"title": "Article age in days/iterations" }, "yaxis":{"title": "Counts" } }})
 		
 		# diversity figures
 		if self.engine is not "Control":
 			x = [i for i in range(len(self.diversityMetrics["ILD"]))]
 			y = [standardize(i,precision=4) for i in self.diversityMetrics["ILD"]]
-			Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "ILD diversity", ytitle = "ILD",xtitle = "Iteration"))
+			type_ = "scatter"
+			mode = 'lines+markers'
+			title = "Unexpectedness diversity"
+			Json.update({"Figure2" : {"x": x,"y": y,"type": type_,"title": title, "mode": mode, "xaxis":{"title": "Day" }, "yaxis":{"title": "Unexpectedness diversity" }}})
 
 			x = [i for i in range(len(self.diversityMetrics["EPC"]))]
 			y = [standardize(i,precision=4) for i in self.diversityMetrics["EPC"]]
-			Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "EPC diversity", ytitle = "EPC",xtitle = "Iteration"))
+			type_ = "scatter"
+			title = "Long-tail diversity"
+			Json.update({"Figure3" : {"x": x,"y": y,"type": type_,"title": title,  "mode": mode, "xaxis":{"title": "Day" }, "yaxis":{"title": "Long-tail diversity" }}})
+			#self.pickleForMetrics.append([epoch_index,self.engine,met["EPC"],met["ILD"],gini])
+	
+		# values = []
+		# labels = []
+		# title = "Distribution of choice per topic"
+		# for i in range(len(self.categories)):
+		# 	labels.append(self.categories[i])
+		# 	indeces = np.where(self.ItemsClass==i)[0]
+		# 	A = self.Data["Sales History"][:,indeces]
+		# 	values.append( standardize(np.sum(np.sum(A,axis=1))) )
+		# Json["Figures"].append( plotlyjson(x = labels, y = values, type_ = "pie" ,mode = "none",title = title, ytitle = "",xtitle = ""))
+
+		# x = [i for i in range(1,11)]
+		# y = []
+		# type_ = "bar"
+		# title = "Distribution of choice per article age (in days) for the current iteration"
+		# for i in range(2,12):
+		# 	indeces = np.where(self.Data["ItemLifespan"]==i)[0]
+		# 	A = self.Data["Sales History"] - SalesHistoryBefore
+		# 	A = A[:,indeces]
+		# 	y.append( standardize(np.sum(np.sum(A,axis=1))) )
+		# Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "bar" ,mode = "none",title = title, ytitle = "Counts",xtitle = "Article age in days/iterations"))
+		
+		# # diversity figures
+		# if self.engine is not "Control":
+		# 	x = [i for i in range(len(self.diversityMetrics["ILD"]))]
+		# 	y = [standardize(i,precision=4) for i in self.diversityMetrics["ILD"]]
+		# 	Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "ILD diversity", ytitle = "ILD",xtitle = "Iteration"))
+
+		# 	x = [i for i in range(len(self.diversityMetrics["EPC"]))]
+		# 	y = [standardize(i,precision=4) for i in self.diversityMetrics["EPC"]]
+		# 	Json["Figures"].append( plotlyjson(x = x, y = y, type_ = "scatter" ,mode = 'lines+markers',title = "EPC diversity", ytitle = "EPC",xtitle = "Iteration"))
 		
 		# output on file
 		Json.update({"Users position" : [(standardize(i[0]),standardize(i[1])) for i in self.Data["Users"]]})
@@ -513,6 +555,18 @@ class simulation(object):
 
 			# do not make available items that a user has purchased before
 			Awareness = Awareness - self.Data["Sales History"]>0
+
+			# only a specific nunber of items in users awareness, minimize the effect of thetas
+			for a in range(self.totalNumberOfUsers):
+				w = np.where(Awareness[a,:]==1)[0]
+				if len(w)>self.V:
+					windex = w.tolist()
+					random.shuffle(windex)
+					Awareness[a,:] = np.zeros(self.I)
+					Awareness[a,windex[:self.V]] = 1
+
+			#
+			InitialAwareness = Awareness.copy()
 	
 			# MyMediaLite recommendations 
 			if self.engine is not "Control":
@@ -540,7 +594,7 @@ class simulation(object):
 					Awareness[user, np.where(self.Data["Sales History"][user,Rec]>0)[0] ] = 0		
 
 				# select articles
-				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(user, Rec, Awareness[user,:], control = self.engine=="Control", sessionSize = int(np.random.normal(6, 2)))
+				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(user, Rec, Awareness[user,:], control = self.engine=="Control", sessionSize = int(np.random.normal(self.meanSessionSize, 2)))
 
 				# add item purchase to histories
 				self.Data["Sales History"][user, indecesOfChosenItems] += 1		
@@ -553,7 +607,7 @@ class simulation(object):
 				# store some data for analysis
 				for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
 					indexOfChosenItemW = indecesOfChosenItemsW[i]
-					self.AnaylysisInteractionData.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW,self.Data["Item Has Been Recommended"][indexOfChosenItemW] ])
+					self.AnaylysisInteractionData.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW,self.Data["Item Has Been Recommended"][indexOfChosenItemW],self.ItemsClass[indexOfChosenItem]==self.ItemsClass[indexOfChosenItemW] , self.UsersClass[user]==self.ItemsClass[indexOfChosenItem],self.categories[ self.UsersClass[user]], InitialAwareness[user,indexOfChosenItem] ])
 
 			# after each iteration
 			printj(self.engine+": Temporal adaptations...")	
@@ -613,7 +667,7 @@ class simulation(object):
 	# run MML
 	def mmlRecommendation(self):
 		# run
-		command = "mono MyMediaLite/item_recommendation.exe --training-file=" + self.outfolder + "/positive_only_feedback.csv --item-attributes=" + self.outfolder + "/items_attributes.csv --recommender="+self.engine+" --predict-items-number="+str(self.n)+" --prediction-file=" + self.outfolder + "/output.txt --user-attributes=" + self.outfolder + "/users_attributes.csv --random-seed="+str(self.seed)
+		command = "mono MyMediaLite/item_recommendation.exe --training-file=" + self.outfolder + "/positive_only_feedback.csv --item-attributes=" + self.outfolder + "/items_attributes.csv --recommender="+self.engine+" --predict-items-number="+str(self.n)+" --prediction-file=" + self.outfolder + "/output.txt --user-attributes=" + self.outfolder + "/users_attributes.csv --random-seed="+str(int(self.seed*random.random()))
 		os.system(command)
 		
 		# parse output
@@ -695,9 +749,9 @@ class simulation(object):
 
  
 def main(argv):
-	helpText = 'simulationClass.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder>'
+	helpText = 'simulationClass.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder> -n <numberOfRecommendations> -p <focusonprominence> -N <meanSessionSize> -w <topicweights> -g <topicprominence>'
 	try:
-		opts, args = getopt.getopt(argv,"hi:s:u:d:r:t:f:")
+		opts, args = getopt.getopt(argv,"hi:s:u:d:r:t:f:n:p:N:w:g:")
 	except getopt.GetoptError:
 		printj(helpText)
 		sys.exit(2)
@@ -717,16 +771,35 @@ def main(argv):
 			newItemsPerIteration = int(arg)
 		elif opt in ("-f"):
 			outfolder = arg
+		elif opt in ("-n"):
+			numberOfRecommendations = int(arg)
+		elif opt in ("-N"):
+			meanSessionSize = int(arg)
+		elif opt in ("-p"):
+			focusOnProminentItems = float(arg)
 		elif opt in ("-r"):
 			if "," in arg: recommenders = arg.split(",") 
 			else: recommenders = [arg]
-	
+		elif opt in ("-w"):
+			if "," in arg: tw = arg.split(",") 
+			else: tw = [arg]
+			topicweights = np.array([float(i) for i in tw])
+		elif opt in ("-g"):
+			if "," in arg: tp = arg.split(",") 
+			else: tp = [arg]
+			topicprominence = np.array([float(i) for i in tp])
+
 	printj("Initialize simulation class...")
 	sim = simulation()
 	sim.delta, sim.totalNumberOfUsers, sim.numberOfNewItemsPI = delta, totalNumberOfUsers, newItemsPerIteration
 	sim.seed = seed
 	sim.outfolder = outfolder
 	sim.totalNumberOfIterations = iterationsPerRecommender*2 # one for the control and one for each rec
+	sim.n = numberOfRecommendations
+	sim.Lambda = focusOnProminentItems
+	sim.meanSessionSize = meanSessionSize
+	sim.categoriesFrequency = topicweights
+	sim.categoriesSalience = topicprominence
 
 	printj("Create simulation instance...")
 	sim.createSimulationInstance()
@@ -749,8 +822,8 @@ def main(argv):
 		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
 		printj("Saving for "+rec+"...", comments = "Output pickle file is stored in your workspace.")
 		pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
-		printj("Plotting for "+rec+"...")
-		sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
+		# printj("Plotting for "+rec+"...")
+		# sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
    
     
 if __name__ == "__main__":

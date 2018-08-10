@@ -1,99 +1,88 @@
 {
-    "(mean) Number of items in user's awareness due to popularity": 76.65,
-    "(mean) Number of items in user's awareness due to proximity": 48.09,
-    "(mean) Ratio of items in user's awareness due to proximity/popularity": 0.39,
-    "(median) Number of items in user's awareness": 62.0,
+    "(mean) Number of items in user's awareness due to popularity": 45.09,
+    "(mean) Number of items in user's awareness due to proximity": 25.32,
+    "(mean) Ratio of items in user's awareness due to proximity/popularity": 0.36,
+    "(median) Number of items in user's awareness": 41.0,
     "Completed": 1.0,
     "Current recommender": "Control",
     "Distribution of awareness per article age": {
         "Age of 1 day(s)": 0.0,
-        "Age of 2 day(s)": 0.18,
-        "Age of 3 day(s)": 0.11,
-        "Age of 4 day(s)": 0.08,
-        "Age of 5 day(s)": 0.08,
-        "Age of 6 day(s)": 0.08,
-        "Age of 7 day(s)": 0.07,
+        "Age of 2 day(s)": 0.29,
+        "Age of 3 day(s)": 0.18,
+        "Age of 4 day(s)": 0.12,
+        "Age of 5 day(s)": 0.11,
+        "Age of 6 day(s)": 0.1,
+        "Age of 7 day(s)": 0.08,
         "Age of 8 day(s)": 0.04,
-        "Age of 9 day(s)": 0.06
+        "Age of 9 day(s)": 0.05
     },
     "Distribution of awareness per topic": {
-        "business": 0.18,
-        "entertainment": 0.13,
-        "politics": 0.57,
-        "sport": 0.07,
+        "business": 0.19,
+        "entertainment": 0.14,
+        "politics": 0.55,
+        "sport": 0.06,
         "tech": 0.06
     },
+    "Distribution of choice per topic": {
+        "business": 0.18,
+        "entertainment": 0.18,
+        "politics": 0.44,
+        "sport": 0.13,
+        "tech": 0.08
+    },
     "Epoch": 19,
-    "Figures": [
-        {
-            "data": {
-                "mode": "none",
-                "type": "pie",
-                "x": [
-                    "entertainment",
-                    "business",
-                    "sport",
-                    "politics",
-                    "tech"
-                ],
-                "y": [
-                    1800.0,
-                    1746.0,
-                    1300.0,
-                    4396.0,
-                    752.0
-                ]
-            },
-            "layout": {
-                "title": "Distribution of choice per topic",
-                "xaxis": {
-                    "title": ""
-                },
-                "yaxis": {
-                    "title": ""
-                }
-            }
+    "Figure1": {
+        "labels": [
+            "entertainment",
+            "business",
+            "sport",
+            "politics",
+            "tech"
+        ],
+        "title": "Distribution of choice per topic",
+        "type": "pie",
+        "values": [
+            1795.0,
+            1753.0,
+            1297.0,
+            4394.0,
+            755.0
+        ]
+    },
+    "Figure4": {
+        "title": "Distribution of choice per article age (in days) for the current iteration",
+        "type": "bar",
+        "x": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+        ],
+        "xaxis": {
+            "title": "Article age in days/iterations"
         },
-        {
-            "data": {
-                "mode": "none",
-                "type": "bar",
-                "x": [
-                    1,
-                    2,
-                    3,
-                    4,
-                    5,
-                    6,
-                    7,
-                    8,
-                    9,
-                    10
-                ],
-                "y": [
-                    400.0,
-                    46.0,
-                    12.0,
-                    15.0,
-                    7.0,
-                    7.0,
-                    3.0,
-                    0.0,
-                    0.0,
-                    1.0
-                ]
-            },
-            "layout": {
-                "title": "Distribution of choice per article age (in days) for the current iteration",
-                "xaxis": {
-                    "title": "Article age in days/iterations"
-                },
-                "yaxis": {
-                    "title": "Counts"
-                }
-            }
+        "y": [
+            405.0,
+            45.0,
+            15.0,
+            15.0,
+            14.0,
+            4.0,
+            1.0,
+            1.0,
+            0.0,
+            0.0
+        ],
+        "yaxis": {
+            "title": "Counts"
         }
-    ],
+    },
     "Items position": [
         [
             0.42,
@@ -16098,8 +16087,8 @@
     ],
     "Iteration index": 19,
     "Number of available, non-available items": [
-        1900,
-        2100
+        1000,
+        3000
     ],
     "Users position": [
         [

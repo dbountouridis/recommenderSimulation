@@ -169,12 +169,18 @@ def metrics(M,Rec,ItemFeatures,dist,Mafter):
 	RecAsMatrix = np.zeros((U_, I_))
 	for u in Rec.keys():
 		RecAsMatrix[u,Rec[u]]=1
-	
+
 	return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), 
 	"ILD": ILD(Rec,RecAsMatrix,M,U_,dist), 
-	"EFD": EFD(Rec,RecAsMatrix,M,U_,Rtest), 
-	"EPD": EPD(Rec,RecAsMatrix,M,U_,Rtest,dist),
-	"EILD": EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)}
+	"EFD": 0, 
+	"EPD": 0,
+	"EILD": 0}
+	
+	# return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), 
+	# "ILD": ILD(Rec,RecAsMatrix,M,U_,dist), 
+	# "EFD": EFD(Rec,RecAsMatrix,M,U_,Rtest), 
+	# "EPD": EPD(Rec,RecAsMatrix,M,U_,Rtest,dist),
+	# "EILD": EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)}
 	# EPC(Rec,RecAsMatrix,M,U_)
 	# EFD(Rec,RecAsMatrix,M,U_)
 	# ILD(Rec,RecAsMatrix,M,U_,dist)
