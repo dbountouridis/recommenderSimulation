@@ -126,8 +126,6 @@ def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
 
 	return Z
 
-
-
 class simulation(object):
 	''' The main simulation class
 
