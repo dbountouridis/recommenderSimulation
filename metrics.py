@@ -34,7 +34,7 @@ def EPC(Rec,RecAsMatrix,M,U_,Rtest):
 			sum_+= (1 - np.sum(Ui(item,M))/U_)*disc(i)*Prel(item,u,Rtest)
 		A.append(sum_*Cu)
 	print("EPC:",np.mean(A))
-	return(np.mean(A))
+	return (np.mean(A),np.std(A))
 
 # Expected Free Discovery (EFD)
 # 4.3.2.1 Discovery-Based Measurement
@@ -50,7 +50,7 @@ def EFD(Rec,RecAsMatrix,M,U_,Rtest):
 			sum_+= np.log2(top/bottom)*disc(i)*Prel(item,u,Rtest)
 		A.append(sum_*(-Cu))
 	print("EFD:",np.mean(A))
-	return np.mean(A)
+	return np.mean(A),np.std(A)
 			
 ''' 
 	A related but different notion considers the Unexpectedness (Murakami et al., 2008;
@@ -74,7 +74,7 @@ def EPD(Rec,RecAsMatrix,M,U_,Rtest,dist):
 		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
 		#time.sleep(1)
 	print("EPD",np.mean(A))
-	return np.mean(A)
+	return np.mean(A),np.std(A)
 
 # Expected Intra-List Distance (EILD)
 def EILD(Rec,RecAsMatrix,M,U_,Rtest,dist):
@@ -92,7 +92,7 @@ def EILD(Rec,RecAsMatrix,M,U_,Rtest,dist):
 		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
 		#time.sleep(1)
 	print("EILD",np.mean(A))
-	return np.mean(A)
+	return np.mean(A), np.std(A)
 
 
 # Intra-List Distance 
@@ -105,7 +105,7 @@ def ILD(Rec,RecAsMatrix,M,U_,dist):
 			sum_ += dist[item,itemj]
 	R_ = np.sum(np.sum(RecAsMatrix))
 	#print("ILD:",1/(R_*(R_-1))*sum_ )
-	return (1/(R_*(R_-1)))*sum_ 
+	return (1/(R_*(R_-1)))*sum_, 0
 
 
 
@@ -169,12 +169,21 @@ def metrics(M,Rec,ItemFeatures,dist,Mafter):
 	RecAsMatrix = np.zeros((U_, I_))
 	for u in Rec.keys():
 		RecAsMatrix[u,Rec[u]]=1
-
-	return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), 
-	"ILD": ILD(Rec,RecAsMatrix,M,U_,dist), 
-	"EFD": 0, 
-	"EPD": 0,
-	"EILD": 0}
+	(mEPC,sEPC) = EPC(Rec,RecAsMatrix,M,U_,Rtest)
+	(mILD,sILD) = ILD(Rec,RecAsMatrix,M,U_,dist)
+	(mEFD,sEFD) = EFD(Rec,RecAsMatrix,M,U_,Rtest)
+	(mEPD,sEPD) = EPD(Rec,RecAsMatrix,M,U_,Rtest,dist)
+	(mEILD,sEILD) = EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)
+	return {"EPC" :  mEPC,
+	"EPCstd" :  sEPC,
+	"ILD": mILD,
+	"ILDstd": sILD,
+	"EFD": mEFD,
+	"EFDstd": sEFD,  
+	"EPD": mEPD,
+	"EPDstd": mEPD,
+	"EILD": mEILD,
+	"EILDstd": sEILD}
 	
 	# return {"EPC" : EPC(Rec,RecAsMatrix,M,U_,Rtest), 
 	# "ILD": ILD(Rec,RecAsMatrix,M,U_,dist), 

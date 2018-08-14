@@ -173,7 +173,7 @@ class simulation(object):
 		self.categoriesSalience = [0.05,0.07,0.03,0.85,0.01] 
 		self.categoriesFrequency = [0.2, 0.2, 0.2, 0.2, 0.2]
 		self.AnaylysisInteractionData = []
-		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": []}
+		self.diversityMetrics = {"EPC": [],"EPCstd": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": [], 'ILDstd': [], "EFDstd": [], "EPDstd": [], "EILDstd": []}
 		self.outfolder = ""
 
 	# Create an instance of simulation based on the parameters
@@ -295,6 +295,7 @@ class simulation(object):
 		df.to_pickle(self.outfolder + "/dataframe for simple analysis-"+self.engine+".pkl")
 
 		# metrics
+		print(self.diversityMetrics)
 		df = pd.DataFrame(self.diversityMetrics)
 		df["Iteration index"] = np.array([i for i in range(len(self.diversityMetrics["EPC"])) ])
 		df["MML method"] = np.array([self.engine for i in  range(len(self.diversityMetrics["EPC"]))])
@@ -306,7 +307,7 @@ class simulation(object):
 			self.ControlHistory = self.Data["Sales History"].copy()
 		self.engine = engine
 		self.AnaylysisInteractionData=[]
-		self.diversityMetrics = {"EPC": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": []}
+		self.diversityMetrics = {"EPC": [],"EPCstd": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": [], 'ILDstd': [], "EFDstd": [], "EPDstd": [], "EILDstd": []}
 
 	# make awareness matrix
 	def makeawaremx(self):
@@ -616,10 +617,15 @@ class simulation(object):
 				met = metrics.metrics(SalesHistoryBefore, recommendations, self.ItemFeatures,self.ItemDistances,self.Data["Sales History"])
 				met.update({"Gini": metrics.computeGinis(self.Data["Sales History"],self.ControlHistory)})
 				self.diversityMetrics["EPC"].append(met["EPC"])
+				self.diversityMetrics["EPCstd"].append(met["EPCstd"])
 				self.diversityMetrics["EPD"].append(met["EPD"])
 				self.diversityMetrics["EILD"].append(met["EILD"])
 				self.diversityMetrics["ILD"].append(met["ILD"])
 				self.diversityMetrics["EFD"].append(met["EFD"])
+				self.diversityMetrics["EPDstd"].append(met["EPDstd"])
+				self.diversityMetrics["EILDstd"].append(met["EILDstd"])
+				self.diversityMetrics["ILDstd"].append(met["ILDstd"])
+				self.diversityMetrics["EFDstd"].append(met["EFDstd"])
 				self.diversityMetrics["Gini"].append(met["Gini"])
 
 			# show stats on screen and save json for interface
