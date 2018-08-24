@@ -55,11 +55,11 @@ def pltt2(M, r, output):
 	plt.show()
 
 def plotTopics(X,L,X1,L1,classes):
-	sns.set_context("notebook", font_scale=1.4, rc={"lines.linewidth": 1.0})
+	sns.set_context("notebook", font_scale=1.6, rc={"lines.linewidth": 1.0,'xtick.labelsize': 32, 'axes.labelsize': 32})
 	sns.set(style="whitegrid")
 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 	cmaps= ['Blues','Reds','Greens','Oranges','Greys']
-	t = ["entertainment","business","sport","politics","tech"]
+	t = ["entertainment","business","sports","politics","tech"]
 
 	f, ax = plt.subplots()
 	ax.set_aspect("equal")
@@ -72,29 +72,33 @@ def plotTopics(X,L,X1,L1,classes):
 		color = sns.color_palette(cmaps[i])[-2]
 		plt.scatter(x_[:,0], x_[:,1], c = color, s=5)
 	ax.set_aspect('equal', adjustable='box')
+	for tick in ax.xaxis.get_major_ticks():
+		tick.label.set_fontsize(14)
+	for tick in ax.yaxis.get_major_ticks():
+		tick.label.set_fontsize(14) 
 	ax.set_xlim([-1.1,1.1])
 	ax.set_ylim([-1.1,1.1])
 	for i in range(5): # 5 topic spaces
 		indeces=np.where(L==i)[0]
 		x = X[indeces[0]][0]
 		y = X[indeces[0]][1]
-		if classes[indeces[0]] == "sport":
-			x -= 0.15
-			y -= 0.6
-		# if classes[indeces[0]] == "business":
-		# 	x = 2
-		# 	y = -1.5
-		# if classes[indeces[0]] == "politics":
-		# 	x = 1
-		# 	y = -2.5
-		# if classes[indeces[0]] == "entertainment":
-		# 	x = -2.5
-		# 	y = 2.5
-		# if classes[indeces[0]] == "tech":
-		# 	x = 1
-		# 	y = 2.5
+		if classes[indeces[0]] == "sports":
+			x -= 0.25
+			y -= 0.66
+		if classes[indeces[0]] == "business":
+			x = 0.
+			y = -0.75
+		if classes[indeces[0]] == "politics":
+			x = .6
+			y = .25
+		if classes[indeces[0]] == "entertainment":
+			x = -.2
+			y = .8
+		if classes[indeces[0]] == "tech":
+			x = -.1
+			y = -.1
 		ax.text(x, y, classes[indeces[0]], size=14)
-		
+	#sns.set(font_scale = 2)	
 	plt.show()
 
 def LogitChoiceByHand(Distances,k):
@@ -130,7 +134,9 @@ k = 10
 
 if topicSpace:
 	random.seed(1)
-	(X,labels,classes) = pickle.load(open('BBC data/t-SNE-projection.pkl','rb'))
+	(X,labels,classes) = pickle.load(open('BBC data/t-SNE-projection1.pkl','rb'))
+	classes = np.array(classes)
+	classes[np.where(np.array(classes)=="sport")[0]]="sports"
 	gmm = GaussianMixture(n_components=5, random_state =2).fit(X)
 	samples_,ItemsClass = gmm.sample(1000)
 	Items = samples_/55  # scale down

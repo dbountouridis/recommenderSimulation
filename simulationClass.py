@@ -17,7 +17,7 @@ import sys, getopt
 import copy
 import json
 import metrics
-#import matplotlib
+import matplotlib
 #matplotlib.use('Agg')
 # # force headless backend, or set 'backend' to 'Agg'
 # # in your ~/.matplotlib/matplotlibrc
@@ -106,10 +106,11 @@ def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
 	# 	x.append(Z[k][:min_])
 	# print(np.array(x).T)
 	# # set sns context
-	# sns.set_context("notebook", font_scale=1.5, rc={"lines.linewidth": 1.2,'text.usetex' : True})
+	# sns.set_context("notebook", font_scale=2, rc={"lines.linewidth": 1.0,'xtick.labelsize': 32, 'axes.labelsize': 32})
+	# sns.set(style="whitegrid")
 	# sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 	# matplotlib.pyplot.rc('text', usetex=True)
-	# matplotlib.pyplot.rc('font', family='serif')
+	# matplotlib.pyplot.rc('font', family='serif',size=20)
 	# flatui = sns.color_palette("husl", 8)
 	# #fig, ax = plt.subplots()
 	# fig, axes = matplotlib.pyplot.subplots(nrows=1, ncols=1, figsize=(8, 6))
@@ -118,21 +119,19 @@ def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
 	# t = ["entertainment","business","sport","politics","tech"]
 	# colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(t))]
 	# ax0.hist(x, 10, histtype='bar',stacked=True, color=colors,label=categories)
-	# ax0.legend(prop={'size': 15})
-	# ax0.set_xlabel("$z^0$")
-	# ax0.set_ylabel("counts")
+	# ax0.legend(prop={'size': 18})
+	# for tick in ax0.xaxis.get_major_ticks():
+	# 	tick.label.set_fontsize(18)
+	# for tick in ax0.yaxis.get_major_ticks():
+	# 	tick.label.set_fontsize(0)
+	# ax0.set_xlabel("$z^0$",fontsize=20)
+	# ax0.set_ylabel("")
 	# sns.despine()
 	# matplotlib.pyplot.show()
 
 	return Z
 
 class simulation(object):
-	''' The main simulation class
-
-		By initiating the class, items and users are generated.
-		By changing the recommendation engine, the purchase history and user/items remain the same.
-
-	'''
 	def __init__(self):
 		# Default settings
 		self.seed = 1
@@ -192,7 +191,7 @@ class simulation(object):
 		(X,labels,topicClasses) = pickle.load(open('BBC data/t-SNE-projection'+str(R[r])+'.pkl','rb'))
 		gmm = GaussianMixture(n_components=5, random_state=S[r]).fit(X)
 		
-		# normalize topic weights to sum into 1
+		# normalize topic weights to sum into 1 (CBF)
 		self.categoriesFrequency = [np.round(i,decimals=1) for i in self.categoriesFrequency/np.sum(self.categoriesFrequency)]
 		
 		# Generate items/articles from the BBC data projection
@@ -225,16 +224,8 @@ class simulation(object):
 			indeces = np.where(self.ItemsClass==c)[0]
 			self.initialR[indeces] = Z0[category]
 
-		# dd = spatial.distance.cdist(self.Items, self.Items,metric = 'euclidean')[0]
-		# print(np.mean(dd),np.std(dd))
-		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
-		# ax[0].hist(dd, normed=True)
-		# matplotlib.pyplot.show()
-
-			
-
-		# Generate users/customers
-		# from uniform
+		# Generate users/readers/customers
+		# from uniform distribution with max radius 1 from the origin (0,0)
 		self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
 		for i, user in enumerate(self.Users):
 			while spatial.distance.cdist([user], [[0,0]],metric = 'euclidean')[0][0]>1.1:
@@ -242,34 +233,18 @@ class simulation(object):
 			self.Users[i] = user
 
 		self.UsersClass = [gmm.predict([self.Users[i]*55])[0] for i in range(self.totalNumberOfUsers)]
-		#print(self.UsersClass)
-
 	
-		# from bivariate
-		#self.Users ,_ = make_blobs(n_samples=self.totalNumberOfUsers, n_features=2, centers=1, cluster_std=0.4, center_box=(0, 0), shuffle=True, random_state=self.seed)
-
-		# from circle uniform
-		# length = np.random.uniform(0, 1, self.totalNumberOfUsers)
-		# angle = np.pi * np.random.uniform(0, 2, self.totalNumberOfUsers)
-		# self.Users[:,0] = length * np.cos(angle)
-		# self.Users[:,1] = length * np.sin(angle)
-		
-		
 		# Randomly assign how willing each user is to change preferences (used in choice model). 
-		# Normal distribution centered around 0.05
+		# Normal distribution centered around 0.1
 		lower, upper = 0, 1
 		mu, sigma = 0.1, 0.03
 		X = stats.truncnorm( (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
 		self.userVarietySeeking = X.rvs(self.totalNumberOfUsers, random_state = self.seed)
-		# printj(self.userVarietySeeking)
-		# fig, ax = matplotlib.pyplot.subplots(2, sharex=True)
-		# ax[0].hist(self.userVarietySeeking, normed=True)
-		# matplotlib.pyplot.show()
-
-		# Purchases, sales history
+		
+		# User-item interaction e.g., sales history
 		P = np.zeros([self.totalNumberOfUsers,self.I]) 	
 	
-		# Create distance matrices
+		# Distance matrix between users and items
 		D = spatial.distance.cdist(self.Users, self.Items,metric = 'euclidean')			
 		
 		# Store everything in a dictionary structure
@@ -310,7 +285,7 @@ class simulation(object):
 		self.diversityMetrics = {"EPC": [],"EPCstd": [],'ILD': [],"Gini": [], "EFD": [], "EPD": [], "EILD": [], 'ILDstd': [], "EFDstd": [], "EPDstd": [], "EILDstd": []}
 
 	# make awareness matrix
-	def makeawaremx(self):
+	def computeAwarenessMatrix(self):
 		random.seed(self.seed)
 		np.random.seed(self.seed)
 
@@ -332,41 +307,6 @@ class simulation(object):
 				# W2[a,i] = r<W2[a,i] # probabilistic
 				# W3[a,i] = r<W3[a,i] # probabilistic
 		return W,W2,W3
-
-	# Probabilistic choice model
-	def ChoiceModel(self, user, Rec, w, control = False, sessionSize =1):
-		#random.seed(self.seed)
-		#np.random.seed(self.seed)
-
-		Distances = self.Data["D"][user,:]
-		Similarity = -self.k*np.log(Distances)  
-
-		#V = Similarity/np.sum(Similarity)
-		V = Similarity.copy()
-
-		if not control: 
-			# exponential ranking discount, from Vargas
-			for k, r in enumerate(Rec):
-				V[r] = Similarity[r] + self.delta*np.power(0.9,k)
-
-		# Introduce the stochastic component
-		E = -np.log(-np.log([random.random() for v in range(len(V))]))
-		U = V + E
-		sel = np.where(w==1)[0]
-
-		# with stochastic
-		selected = np.argsort(U[sel])[::-1]
-		
-		# without stochastic
-		selectedW = np.argsort(V[sel])[::-1]
-		return sel[selected[:sessionSize]],sel[selectedW[:sessionSize]]
-
-		randomChoice = False
-		if randomChoice:
-			sel = np.where(w==1)[0].tolist()
-			random.shuffle(sel)
-			selected = sel[:sessionSize]
-		return selected, selected # index of chosen item
 
 	# Compute new position of a user given they purchased an item
 	def computeNewPositionOfUserToItem(self, user, indecesOfChosenItems, iteration):
@@ -393,19 +333,6 @@ class simulation(object):
 		y = (-self.p*(x-1)+1)*initialProminence
 		return max([y, 0])
 
-	# temporal adaptations after the end of each iteration
-	def addedFunctionalitiesAfterIteration(self, activeItemIndeces):
-
-		# update user-item distances based on new user positions
-		self.Data["D"] = spatial.distance.cdist(self.Data["Users"], self.Items,metric = 'euclidean')	
-
-		# update lifespan of available items
-		self.Data["ItemLifespan"][activeItemIndeces] = self.Data["ItemLifespan"][activeItemIndeces]+1
-		
-		# update prominence based on lifespan, naive
-		for a in activeItemIndeces:
-			self.Data['ItemProminence'][a]= self.prominenceFunction(self.initialR[a],self.Data['ItemLifespan'][a])
-
 	# export the subset of available users and items
 	def subsetOfAvailableUsersItems(self,iteration):
 		
@@ -422,32 +349,32 @@ class simulation(object):
 		return (activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) 
 
 	# export json for online interface
-	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces, SalesHistoryBefore):
+	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, SalesHistoryBefore):
 		Json = {}
 		Json.update({"Current recommender" : self.engine})
 		Json.update({"Epoch" : epoch})
 		Json.update({"Iteration index" : epoch_index})
 		Json.update({"Completed" : standardize(epoch_index+1)/len(iterationRange)})
-		Json.update({"(median) Number of items in user's awareness" : standardize(np.median(np.sum(Awareness,axis=1)))})
-		Json.update({"Number of available, non-available items" : [len(activeItemIndeces),len(nonActiveItemIndeces) ]})
-		toProx = np.mean(np.sum(AwarenessProximity[:,activeItemIndeces],axis=1))
+		Json.update({"(median) Number of items in user's awareness" : standardize(np.median(np.sum(self.Awareness,axis=1)))})
+		Json.update({"Number of available, non-available items" : [len(self.activeItemIndeces),len(self.nonActiveItemIndeces) ]})
+		toProx = np.mean(np.sum(self.AwarenessProximity[:,self.activeItemIndeces],axis=1))
 		Json.update({"(mean) Number of items in user's awareness due to proximity" : standardize(toProx)})
-		toPop = np.mean(np.sum(AwarenessOnlyPopular[:,activeItemIndeces],axis=1))
+		toPop = np.mean(np.sum(self.AwarenessOnlyPopular[:,self.activeItemIndeces],axis=1))
 		Json.update({"(mean) Number of items in user's awareness due to popularity" : standardize(toPop)})
 		Json.update({"(mean) Ratio of items in user's awareness due to proximity/popularity" : standardize( toProx/(toPop+toProx))})
 		
 		ApA = {}
 		for i in range(1,10):
 			indeces = np.where(self.Data["ItemLifespan"]==i)[0]
-			A = Awareness[:,indeces]
-			ApA.update({ "Age of "+str(i)+" day(s)" : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1))) })
+			A = self.Awareness[:,indeces]
+			ApA.update({ "Age of "+str(i)+" day(s)" : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(self.Awareness,axis=1))) })
 		Json.update({'Distribution of awareness per article age' : ApA})
 		
 		f = {}
 		for i in range(len(self.categories)):
 			indeces = np.where(self.ItemsClass==i)[0]
-			A = Awareness[:,indeces]
-			f.update({self.categories[i] : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(Awareness,axis=1))) })
+			A = self.Awareness[:,indeces]
+			f.update({self.categories[i] : standardize(np.mean(np.sum(A,axis=1))/np.mean(np.sum(self.Awareness,axis=1))) })
 		Json.update({"Distribution of awareness per topic" : f})
 
 		#output on terminal
@@ -532,85 +459,145 @@ class simulation(object):
 		Json.update({"Items position" : [(standardize(i[0]),standardize(i[1])) for i in self.Items]})
 		json.dump(Json, open(self.outfolder + '/'+str(self.engine)+'-data.json', 'w'),sort_keys=True, indent=4)
 	
+	def AwarenessModule(self, epoch):
+		# random subset of available users . Subset of available items to all users
+		(self.activeUserIndeces, self.nonActiveUserIndeces, self.activeItemIndeces, self.nonActiveItemIndeces) = self.subsetOfAvailableUsersItems(epoch)
+		
+		# compute awareness per user and adjust for availability 
+		self.Awareness, self.AwarenessOnlyPopular, self.AwarenessProximity = self.computeAwarenessMatrix()
+		self.Awareness[:,self.nonActiveItemIndeces] = 0 
+
+		# do not make available items that a user has purchased before
+		self.Awareness = self.Awareness - self.Data["Sales History"]>0
+
+		# only a specific nunber of items in users awareness, minimize the effect of thetas
+		for a in range(self.totalNumberOfUsers):
+			w = np.where(self.Awareness[a,:]==1)[0]
+			if len(w)>self.V:
+				windex = w.tolist()
+				random.shuffle(windex)
+				self.Awareness[a,:] = np.zeros(self.I)
+				self.Awareness[a,windex[:self.V]] = 1
+	
+	def ChoiceModule(self, user, Rec, w, control = False, sessionSize =1):
+		#random.seed(self.seed)
+		#np.random.seed(self.seed)
+
+		Distances = self.Data["D"][user,:]
+		Similarity = -self.k*np.log(Distances)  
+
+		#V = Similarity/np.sum(Similarity)
+		V = Similarity.copy()
+
+		if not control: 
+			# exponential ranking discount, from Vargas
+			for k, r in enumerate(Rec):
+				V[r] = Similarity[r] + self.delta*np.power(0.9,k)
+
+		# Introduce the stochastic component
+		E = -np.log(-np.log([random.random() for v in range(len(V))]))
+		U = V + E
+		sel = np.where(w==1)[0]
+
+		# with stochastic
+		selected = np.argsort(U[sel])[::-1]
+		
+		# without stochastic
+		selectedW = np.argsort(V[sel])[::-1]
+		return sel[selected[:sessionSize]],sel[selectedW[:sessionSize]]
+
+		randomChoice = False
+		if randomChoice:
+			sel = np.where(w==1)[0].tolist()
+			random.shuffle(sel)
+			selected = sel[:sessionSize]
+		return selected, selected # index of chosen item
+		
+	def TemporalAdaptationsModule(self):
+		
+		# update user-item distances based on new user positions
+		self.Data["D"] = spatial.distance.cdist(self.Data["Users"], self.Items,metric = 'euclidean')	
+
+		# update lifespan of available items
+		self.Data["ItemLifespan"][self.activeItemIndeces] = self.Data["ItemLifespan"][self.activeItemIndeces]+1
+		
+		# update prominence based on lifespan, naive
+		for a in self.activeItemIndeces:
+			self.Data['ItemProminence'][a]= self.prominenceFunction(self.initialR[a],self.Data['ItemLifespan'][a])
+
 	# run the simulation
 	def runSimulation(self, iterationRange =[]):
 			
 		# for each iteration
 		for epoch_index, epoch in enumerate(iterationRange):
 
+			# initializations prior to the iteration
 			SalesHistoryBefore = self.Data["Sales History"].copy()
-			
 			if epoch_index>0: 
 				self.Data["Users"][user]  = self.Data["Users"][user].copy()
 				self.Data["X"][:,epoch] = self.Data["X"][:,epoch-1]
 				self.Data["Y"][:,epoch] = self.Data["Y"][:,epoch-1]
 				
-			# random subset of available users . Subset of available items to all users
-			(activeUserIndeces, nonActiveUserIndeces, activeItemIndeces, nonActiveItemIndeces) = self.subsetOfAvailableUsersItems(epoch)
-			
-			# compute awareness per user and adjust for availability 
-			Awareness, AwarenessOnlyPopular,AwarenessProximity = self.makeawaremx()
-			Awareness[:,nonActiveItemIndeces] = 0 
-
-			# do not make available items that a user has purchased before
-			Awareness = Awareness - self.Data["Sales History"]>0
-
-			# only a specific nunber of items in users awareness, minimize the effect of thetas
-			for a in range(self.totalNumberOfUsers):
-				w = np.where(Awareness[a,:]==1)[0]
-				if len(w)>self.V:
-					windex = w.tolist()
-					random.shuffle(windex)
-					Awareness[a,:] = np.zeros(self.I)
-					Awareness[a,windex[:self.V]] = 1
-
-			#
-			InitialAwareness = Awareness.copy()
+			# Awareness from proximity and prominence
+			self.AwarenessModule(epoch)
+			InitialAwareness = self.Awareness.copy()
 	
-			# MyMediaLite recommendations 
+			# Recommendation module 
 			if self.engine is not "Control":
-				self.exportToMMLdocuments(  activeItemIndeces = activeItemIndeces)
+				self.exportToMMLdocuments()
 				recommendations = self.mmlRecommendation()
 				
-			# for each active user
-			printj(self.engine+": Choice...")
-			for user in activeUserIndeces:
-				# if epoch>1: self.simplePlot(forUser = user, awareness = Awareness[user, :], active = activeItemIndeces)
-	
+			# Add recommendations to each user's awareness pool			
+			for user in self.activeUserIndeces:
 				Rec=np.array([-1])
+				
 				if self.engine is not "Control":
 					if user not in recommendations.keys():
 						printj(" -- Nothing to recommend -- to user ",user)
 						continue
 					Rec = recommendations[user]
-
 					self.Data["Item Has Been Recommended"][Rec] = 1
 						
 					# temporary adjust awareness for that item-user pair
-					Awareness[user, Rec] = 1				
+					self.Awareness[user, Rec] = 1				
 
 					# if the user has been already purchased the item then decrease awareness of the recommendation
-					Awareness[user, np.where(self.Data["Sales History"][user,Rec]>0)[0] ] = 0		
+					self.Awareness[user, np.where(self.Data["Sales History"][user,Rec]>0)[0] ] = 0		
 
+			# Choice module
+			for user in self.activeUserIndeces:
+				Rec=np.array([-1])
+				
+				if self.engine is not "Control":
+					if user not in recommendations.keys():
+						printj(" -- Nothing to recommend -- to user ",user)
+						continue
+					Rec = recommendations[user]
 				# select articles
-				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModel(user, Rec, Awareness[user,:], control = self.engine=="Control", sessionSize = int(np.random.normal(self.meanSessionSize, 2)))
+				indecesOfChosenItems,indecesOfChosenItemsW =  self.ChoiceModule(user, Rec, self.Awareness[user,:], control = self.engine=="Control", sessionSize = int(np.random.normal(self.meanSessionSize, 2)))
 
 				# add item purchase to histories
 				self.Data["Sales History"][user, indecesOfChosenItems] += 1		
 						
-				# compute new user position (we don't store the position in the session, only after it is over)
-				
+				# compute new user position (we don't update the position yet, only after the iteration is over)
 				if self.engine is not "Control":
-					self.computeNewPositionOfUserToItem( user, indecesOfChosenItems, epoch)
+					self.computeNewPositionOfUserToItem(user, indecesOfChosenItems, epoch)
 
 				# store some data for analysis
 				for i,indexOfChosenItem in enumerate(indecesOfChosenItems):
 					indexOfChosenItemW = indecesOfChosenItemsW[i]
-					self.AnaylysisInteractionData.append([epoch_index, user, self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], self.Data["ItemProminence"][indexOfChosenItem],self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, indexOfChosenItem == indexOfChosenItemW,self.Data["Item Has Been Recommended"][indexOfChosenItemW],self.ItemsClass[indexOfChosenItem]==self.ItemsClass[indexOfChosenItemW] , self.UsersClass[user]==self.ItemsClass[indexOfChosenItem],self.categories[ self.UsersClass[user]], InitialAwareness[user,indexOfChosenItem] ])
+					self.AnaylysisInteractionData.append([epoch_index, user, 
+						self.engine ,indexOfChosenItem,self.Data["ItemLifespan"][indexOfChosenItem], 
+						self.Data["ItemProminence"][indexOfChosenItem],
+						self.categories[self.ItemsClass[indexOfChosenItem]],indexOfChosenItem in Rec, 
+						indexOfChosenItem == indexOfChosenItemW,self.Data["Item Has Been Recommended"][indexOfChosenItemW],self.ItemsClass[indexOfChosenItem]==self.ItemsClass[indexOfChosenItemW] , 
+						self.UsersClass[user]==self.ItemsClass[indexOfChosenItem],
+						self.categories[ self.UsersClass[user]], 
+						InitialAwareness[user,indexOfChosenItem] ])
 
-			# after each iteration
+			# Temporal adaptations
 			printj(self.engine+": Temporal adaptations...")	
-			self.addedFunctionalitiesAfterIteration( activeItemIndeces)
+			self.TemporalAdaptationsModule()
 
 			# compute diversity metrics		
 			if self.engine is not "Control":
@@ -629,13 +616,13 @@ class simulation(object):
 				self.diversityMetrics["Gini"].append(met["Gini"])
 
 			# show stats on screen and save json for interface
-			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, Awareness, AwarenessOnlyPopular, AwarenessProximity, activeItemIndeces, nonActiveItemIndeces, SalesHistoryBefore)
+			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, SalesHistoryBefore)
 
 		# save results
 		self.exportAnalysisDataAfterIteration()
 		
 	# export to MML type input
-	def exportToMMLdocuments(self,  activeItemIndeces = False):
+	def exportToMMLdocuments(self):
 		np.savetxt(self.outfolder + "/users.csv", np.array([i for i in range(self.totalNumberOfUsers)]), delimiter=",", fmt='%d')
 
 		# user profiles
@@ -653,17 +640,17 @@ class simulation(object):
 		np.savetxt(self.outfolder + "/users_attributes.csv", np.array(F), delimiter=",", fmt='%d')
 
 		# purchases/positive only feedback
-		if activeItemIndeces:
+		if self.activeItemIndeces:
 			P = self.Data["Sales History"]
 			p = np.where(P>=1)
 			z = zip(p[0],p[1])
-			l = [[i,j] for i,j in z if j in activeItemIndeces]
+			l = [[i,j] for i,j in z if j in self.activeItemIndeces]
 			np.savetxt(self.outfolder + "/positive_only_feedback.csv", np.array(l), delimiter=",", fmt='%d')
 
 		# export the active items, or all of them if activeItemIndeces is empty
-		if not activeItemIndeces: activeItemIndeces = [i for i in range(self.I)]
+		if not self.activeItemIndeces: self.activeItemIndeces = [i for i in range(self.I)]
 		d = []
-		for i in activeItemIndeces:
+		for i in self.activeItemIndeces:
 			feat = np.where(self.ItemFeatures[i]/np.max(self.ItemFeatures[i])>0.33)[0]
 			for f in feat: d.append([int(i),int(f)])
 		np.savetxt(self.outfolder + "/items_attributes.csv", np.array(d), delimiter=",", fmt='%d')
@@ -690,7 +677,8 @@ class simulation(object):
 	# plotting	    
 	def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
 
-		sns.set_context("notebook", font_scale=1.2, rc={"lines.linewidth": 1.2})
+		sns.set_context("notebook", font_scale=1.6, rc={"lines.linewidth": 1.0,'xtick.labelsize': 32, 'axes.labelsize': 32})
+		sns.set(style="whitegrid")
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 		flatui = sns.color_palette("husl", 8)
 		f, ax = matplotlib.pyplot.subplots(1,1, figsize=(6,6), sharey=True)
@@ -734,7 +722,7 @@ class simulation(object):
 		
 		# final user position as a circle
 		for i in range(len(self.Users[:,1])):
-			ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='D', c='k',s=8, alpha = 0.4 )
+			ax.scatter(self.Data["Users"][i,0], self.Data["Users"][i,1], marker='+', c='k',s=20, alpha = 0.8 )
 		
 		# user drift
 		if drift:
@@ -747,10 +735,13 @@ class simulation(object):
 		ax.set_aspect('equal', adjustable='box')
 		ax.set_xlim([-1.1,1.1])
 		ax.set_ylim([-1.1,1.1])
+		for tick in ax.xaxis.get_major_ticks():
+			tick.label.set_fontsize(14)
+		for tick in ax.yaxis.get_major_ticks():
+			tick.label.set_fontsize(14) 
 		matplotlib.pyplot.tight_layout()
 		matplotlib.pyplot.savefig(self.outfolder + "/" + output)
 		if not storeOnly: matplotlib.pyplot.show()
-
  
 def main(argv):
 	helpText = 'simulationClass.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder> -n <numberOfRecommendations> -p <focusonprominence> -N <meanSessionSize> -w <topicweights> -g <topicprominence>'
@@ -828,8 +819,7 @@ def main(argv):
 		pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
 		# printj("Plotting for "+rec+"...")
 		# sim2.plot2D(drift = True, output = "2d-"+sim2.engine+".pdf")
-   
-    
+      
 if __name__ == "__main__":
    main(sys.argv[1:])           
 

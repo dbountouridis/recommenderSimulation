@@ -20,6 +20,7 @@ from skbio.tree import nj
 
 __author__ = 'Dimitrios Bountouridis'
 
+# diversity figures as they appear on the paper
 def diversityAnalysis(infolder):
 	print("Simple diversity analysis...")
 	# Read files
@@ -35,14 +36,11 @@ def diversityAnalysis(infolder):
 	print(df.describe())
 	df2 = df.loc[df['MML method'] != "Control"]
 
-	
-
 	for metric in ["EPC","EPD","EFD","ILD","EILD"]:
 		methods = [ g for g, group in df2.groupby("MML method") if g not in ["Random","MostPopular"]]
 
 		if metric == "EPC":
 			grouped = ["SoftMarginRankingMF","UserAttributeKNN","MostPopularByAttributes","BPRMF","ItemAttributeKNN","LeastSquareSLIM","MultiCoreBPRMF"]
-
 
 		L = []
 		for i,method1 in enumerate(grouped):
@@ -55,37 +53,6 @@ def diversityAnalysis(infolder):
 		xp = np.array(xp)
 		# print(y,x)
 		# time.sleep(100)
-
-
-		# # correlation analysis
-		# for metric in ["EPC"]:#,"EPD","EFD","ILD","EILD"]:
-		# 	M = np.zeros((len(methods),len(methods)))
-		# 	for i,method1 in enumerate(methods):
-		# 		df1_ = df2.loc[df2['MML method'] == method1]
-		# 		data1 = np.array(df1_[metric])
-		# 		for j,method2 in enumerate(methods):
-		# 			df2_ = df2.loc[df2['MML method'] == method2]
-		# 			data2 = np.array(df2_[metric])
-		# 			M[i,j] = mean_squared_error(data1,data2)#pearsonr(data1,data2)[0]
-		# 	print(M)
-
-		# dm = DistanceMatrix(M, methods)
-		# tree = nj(dm, disallow_negative_branch_length=False)
-		# print(tree.ascii_art())
-
-		# # Set up the matplotlib figure
-		# f, ax = plt.subplots(figsize=(7, 7))
-		# d = pd.DataFrame(M,columns = methods)
-		# # Generate a custom diverging colormap
-		# cmap = sns.diverging_palette(220, 10, as_cmap=True)
-
-		# # Draw the heatmap with the mask and , aspect ratio
-		# sns.heatmap(d, annot = True, vmax = 0.16, cmap=cmap, center=0.02,
-		#             square=True, linewidths=.5, cbar_kws={"shrink": .5})
-		# plt.show()
-
-
-
 		# set sns context
 		sns.set_context("notebook", font_scale=1.35, rc={"lines.linewidth": 1.2})
 		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
@@ -114,16 +81,6 @@ def diversityAnalysis(infolder):
 		ax.spines['top'].set_visible(False)
 		plt.show()
 
-	# print("Checking for issues...")
-	# for g, group in df.groupby('Item'):
-	# 	for i,group3 in group.groupby("MML method"):
-	# 		for i,group2 in group3.groupby('User'):
-	# 				total = np.array(group2).shape[0]
-	# 				if total>1:
-	# 					print("Potential problem:")
-	# 					print(group2)
-	# 					print(g,i,total)
-
 	# plot
 	df2 = df.loc[df['MML method'] != "Control"]
 	types = ["LongTail","LongTail","Unexpect","Unexpect","Unexpect","Business"]
@@ -131,10 +88,6 @@ def diversityAnalysis(infolder):
 		g = sns.factorplot(x="Iteration index", y=metric, hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=1, sharey = False, legend = True, dodge=True, legend_out=False)
 		g.despine(left=True)
 		plt.savefig(infolder + "/Analysis diversity "+types[i]+" - "+metric+".pdf")
-
-
-
-
 
 
 def analysis(infolder):
@@ -150,59 +103,39 @@ def analysis(infolder):
 			df = df.append(df_, ignore_index=True)
 	print("Dataframe:")
 	print(df.describe())
-	print(df)
+	#print(df)
 
-	# print("Checking for issues...")
-	# for g, group in df.groupby('Item'):
-	# 	for i,group3 in group.groupby("MML method"):
-	# 		for i,group2 in group3.groupby('User'):
-	# 				total = np.array(group2).shape[0]
-	# 				if total>1:
-	# 					print("Potential problem:")
-	# 					print(group2)
-	# 					print(g,i,total)
+	# Sanity check 1
+	print("Control period: item age distribution")
+	D = {}
+	for i in range(1,11): D.update({i:[]})
+
+	for g, group in df.groupby("MML method"):
+		if g!="Control": continue
+		total = np.array(group).shape[0]
+		for i,group3 in group.groupby("Item Age"):
+			total2 = np.array(group3).shape[0]
+			D[i].append(total2/total)
+			#print(i,total2/total)
+	for key in D.keys():
+		print(key,np.mean(D[key]))
+
+	# Sanity check 2
+	print("Control period: topic distribution")
+	for g, group in df.groupby("MML method"):
+		if g!="Control": continue
+		total = np.array(group).shape[0]
+		for i,group3 in group.groupby("Class/Topic"):
+			total2 = np.array(group3).shape[0]
+			print(i,total2/total)
+	time.sleep(10)
+		
+
 
 	# set sns context
 	sns.set_context("notebook", font_scale=1, rc={"lines.linewidth": 1.2})
 	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
 	flatui = sns.color_palette("husl", 8)
-
-
-	# D = []
-	# for g, group in df.groupby("MML method"):
-	# 	if g=="Control": continue
-	# 	F = {"Recommended": [], "Not Recommended": []}	
-	# 	for i,group3 in group.groupby("Item"):
-	# 		#print(" ",i)
-	# 		totalr = False
-	# 		totalnr = False
-	# 		for t,group2 in group3.groupby("Item has been recommended before"):
-	# 			total = np.array(group2).shape[0]
-	# 			if t: totalr = total
-	# 			if not t: totalrn = total
-			
-	# 		F["Recommended"].append(totalr)
-	# 		F["Not Recommended"].append(totalrn)
-	# 	V = np.sum(F["Recommended"]) + np.sum(F["Not Recommended"])
-	# 	print(g,np.sum(F["Recommended"]),np.sum(F["Not Recommended"]),V, np.sum(F["Recommended"])/V,np.sum(F["Not Recommended"])/V)
-	
-
-	# # percentage of purchases that were recommended
-	# D = []
-	# for g, group in df.groupby("MML method"):	
-	# 	for i,group3 in group.groupby("Iteration index"):
-	# 		f = []
-	# 		for t,group2 in group3.groupby("Class/Topic"):
-	# 			total = np.array(group2).shape[0]
-	# 			f.append(total)
-	# 		D.append([g]+f)
-	# #print(D,["MML method"]+[t for t,group in df.groupby("Class/Topic")])
-	# df_ = pd.DataFrame(D,columns=["MML method"]+[t for t,group in df.groupby("Class/Topic")] )
-	# print(df_)
-	# for g, group in df_.groupby("MML method"):
-	# 	print(group)
-	# 	group.plot.bar(stacked=True);
-	# 	plt.show()
 	
 	for g, group in df.groupby("MML method"):
 		print(g)
@@ -216,8 +149,6 @@ def analysis(infolder):
 					D.append(np.array(group2).shape[0]/total)
 		print(np.mean(D),np.std(D))
 	
-
-
 	# # plot
 	# cmaps= ['Blues','Reds','Greens','Oranges','Greys']
 	# t = ["entertainment","business","sport","politics","tech"]
@@ -290,7 +221,95 @@ def analysis(infolder):
 	print("Plots stored in " + infolder +".")
 
 
+# diversity figures as they appear on the paper
+def diversityAnalysis2(infolder,infolder2):
+	print("Simple diversity analysis...")
+	# Read files
+	files = glob.glob(infolder + "/metrics analysis-*.pkl")
+	for i,file in enumerate(files):
+		print(i,file)
+		if i==0:
+			df = pd.read_pickle(file)
+		else:
+			df_ = pd.read_pickle(file)
+			df = df.append(df_, ignore_index=True)
+	print("Dataframe:")
+	print(df.describe())
+	df2 = df.loc[df['MML method'] != "Control"]
 
+	files = glob.glob(infolder2 + "/metrics analysis-*.pkl")
+	for i,file in enumerate(files):
+		print(i,file)
+		if i==0:
+			df = pd.read_pickle(file)
+		else:
+			df_ = pd.read_pickle(file)
+			df = df.append(df_, ignore_index=True)
+	print("Dataframe:")
+	print(df.describe())
+	df2b = df.loc[df['MML method'] != "Control"]
+
+	for metric in ["EPC","EPD","EFD","ILD","EILD"]:
+		methods = [ g for g, group in df2.groupby("MML method") if g not in ["Random","MostPopular"]]
+
+		if metric == "EPC":
+			grouped = ["BPRSLIM","SoftMarginRankingMF","UserAttributeKNN","MostPopularByAttributes","BPRMF","ItemAttributeKNN","LeastSquareSLIM","MultiCoreBPRMF"]
+
+		L = []
+		for i,method1 in enumerate(grouped):
+			df1_ = df2.loc[df2['MML method'] == method1]
+			data1 = np.array(df1_[metric])
+			L.append(data1)
+	
+		yp = np.max(np.array(L),axis=0).tolist() + np.min(np.array(L),axis=0).tolist()[::-1]
+		xp = np.arange(np.array(L).shape[1]).tolist() + np.arange(np.array(L).shape[1]).tolist()[::-1]
+		xp = np.array(xp)
+		# print(y,x)
+		# time.sleep(100)
+		# set sns context
+		sns.set_context("notebook", font_scale=1.35, rc={"lines.linewidth": 1.2})
+		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+		#flatui = sns.color_palette("Dark2", 6)[::-1]
+		flatui = sns.color_palette("Paired",12)
+		flatui[-2] = (0.69411764705882351*1.4, 0.34901960784313724*1.4, 0.15686274509803921*1.4)
+		#time.sleep(100)
+		sns.set_palette(flatui)
+		[methods.remove(i) for i in grouped] 
+		methods.append("Random")
+		methods.append("MostPopular")
+		fig, ax = plt.subplots(figsize=(9,6))
+		ls = '-'
+		k = 0
+		for g, group in df2.groupby("MML method"):
+			df2b_ = df2b.loc[df2b['MML method'] == g]
+			if g not in methods: continue
+			x = np.array(group["Iteration index"])
+			y = np.array(group[metric])
+			x2 = np.array(df2b_["Iteration index"])
+			y2 = np.array(df2b_[metric])
+			yerror = np.array(group[metric+"std"])/4
+			yerror2 = np.array(df2b_[metric+"std"])/2000
+			ax.errorbar(x2+0.02*k, y2, yerr=yerror2, linestyle="--", marker='o', markersize=1)# label=g+"-nodrift")
+			ax.errorbar(x+0.02*k, y, yerr=yerror, linestyle=ls, marker='o', markersize=7, label=g)
+			
+			k+=1
+		ax.set_xticks(np.arange(len(x)) )
+		ax.set_xlabel('Iterations')
+		ax.set_ylabel(metric)
+		ax.set_xlim(xmin=1)
+		#ax.fill(xp, yp, "g",alpha=0.3, label = "Group A", joinstyle="round")
+		ax.legend()
+		ax.spines['right'].set_visible(False)
+		ax.spines['top'].set_visible(False)
+		plt.show()
+
+	# plot
+	df2 = df.loc[df['MML method'] != "Control"]
+	types = ["LongTail","LongTail","Unexpect","Unexpect","Unexpect","Business"]
+	for i,metric in enumerate(["EPC","EFD","EPD","EILD", "ILD","Gini"]):
+		g = sns.factorplot(x="Iteration index", y=metric, hue="MML method", data=df2, capsize=.2, palette=flatui, size=6, aspect=1, sharey = False, legend = True, dodge=True, legend_out=False)
+		g.despine(left=True)
+		plt.savefig(infolder + "/Analysis diversity "+types[i]+" - "+metric+".pdf")
 
 def main(argv):
 	helpText = 'analysis.py -f <infolder>'
@@ -304,7 +323,9 @@ def main(argv):
 			infolder = arg
 	
 	#analysis(infolder)
-	diversityAnalysis(infolder)
+	#diversityAnalysis2(infolder)
+
+	diversityAnalysis2(infolder,infolder+"-nodrift")
 	
 
    
