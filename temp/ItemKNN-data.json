@@ -1,29 +1,29 @@
 {
-    "(mean) Number of items in user's awareness due to popularity": 8.95,
-    "(mean) Number of items in user's awareness due to proximity": 4.96,
-    "(mean) Ratio of items in user's awareness due to proximity/popularity": 0.36,
-    "(median) Number of items in user's awareness": 7.5,
-    "Completed": 0.1,
+    "(mean) Number of items in user's awareness due to popularity": 8.59,
+    "(mean) Number of items in user's awareness due to proximity": 5.19,
+    "(mean) Ratio of items in user's awareness due to proximity/popularity": 0.38,
+    "(median) Number of items in user's awareness": 8.0,
+    "Completed": 0.2,
     "Current recommender": "ItemKNN",
     "Distribution of awareness per article age": {
         "Age of 1 day(s)": 0.0,
-        "Age of 2 day(s)": 0.23,
-        "Age of 3 day(s)": 0.28,
-        "Age of 4 day(s)": 0.11,
-        "Age of 5 day(s)": 0.04,
-        "Age of 6 day(s)": 0.04,
-        "Age of 7 day(s)": 0.13,
-        "Age of 8 day(s)": 0.09,
-        "Age of 9 day(s)": 0.01
+        "Age of 2 day(s)": 0.19,
+        "Age of 3 day(s)": 0.27,
+        "Age of 4 day(s)": 0.19,
+        "Age of 5 day(s)": 0.07,
+        "Age of 6 day(s)": 0.05,
+        "Age of 7 day(s)": 0.02,
+        "Age of 8 day(s)": 0.05,
+        "Age of 9 day(s)": 0.06
     },
     "Distribution of awareness per topic": {
-        "business": 0.26,
-        "entertainment": 0.18,
-        "politics": 0.31,
-        "sport": 0.23,
-        "tech": 0.02
+        "business": 0.2,
+        "entertainment": 0.13,
+        "politics": 0.44,
+        "sport": 0.22,
+        "tech": 0.01
     },
-    "Epoch": 21,
+    "Epoch": 23,
     "Figure1": {
         "labels": [
             "entertainment",
@@ -35,11 +35,11 @@
         "title": "Read articles by topic",
         "type": "pie",
         "values": [
-            185.0,
-            147.0,
-            183.0,
-            639.0,
-            33.0
+            216.0,
+            186.0,
+            241.0,
+            710.0,
+            34.0
         ]
     },
     "Figure2": {
@@ -48,14 +48,18 @@
         "type": "scatter",
         "x": [
             0,
-            1
+            1,
+            2,
+            3
         ],
         "xaxis": {
             "title": "Day"
         },
         "y": [
             0.0954,
-            0.159
+            0.159,
+            0.159,
+            0.2659
         ],
         "yaxis": {
             "title": "Unexpectedness diversity"
@@ -67,14 +71,18 @@
         "type": "scatter",
         "x": [
             0,
-            1
+            1,
+            2,
+            3
         ],
         "xaxis": {
             "title": "Day"
         },
         "y": [
             0.7151,
-            0.677
+            0.677,
+            0.5452,
+            0.6575
         ],
         "yaxis": {
             "title": "Long-tail diversity"
@@ -99,15 +107,15 @@
             "title": "Article age in days/iterations"
         },
         "y": [
-            19.0,
-            31.0,
-            11.0,
+            16.0,
+            25.0,
+            22.0,
             6.0,
-            2.0,
-            11.0,
-            10.0,
-            2.0,
             3.0,
+            3.0,
+            7.0,
+            4.0,
+            9.0,
             5.0
         ],
         "yaxis": {
@@ -3316,50 +3324,50 @@
             0.57
         ]
     ],
-    "Iteration index": 1,
+    "Iteration index": 3,
     "Number of available, non-available items": [
         200,
         600
     ],
     "Read articles by topic": {
-        "business": 0.12,
+        "business": 0.13,
         "entertainment": 0.16,
-        "politics": 0.54,
-        "sport": 0.15,
-        "tech": 0.03
+        "politics": 0.51,
+        "sport": 0.17,
+        "tech": 0.02
     },
     "Users position": [
         [
-            -0.12,
-            -0.93
+            -0.13,
+            -0.9
         ],
         [
             0.1,
             -0.12
         ],
         [
-            -0.15,
-            -0.34
+            -0.16,
+            -0.33
         ],
         [
-            -0.57,
+            -0.58,
             0.23
         ],
         [
-            -0.37,
-            -0.5
+            -0.31,
+            -0.52
         ],
         [
             0.25,
-            0.08
+            0.13
         ],
         [
-            -0.71,
-            0.03
+            -0.68,
+            0.05
         ],
         [
-            -0.62,
-            0.55
+            -0.58,
+            0.47
         ],
         [
             0.71,
@@ -3370,44 +3378,44 @@
             -0.84
         ],
         [
-            -0.0,
-            -0.87
+            -0.02,
+            -0.86
         ],
         [
-            -0.16,
-            -0.77
+            -0.18,
+            -0.74
         ],
         [
-            -0.75,
-            0.19
+            -0.73,
+            0.2
         ],
         [
             -0.55,
             -0.79
         ],
         [
-            -0.56,
-            -0.3
+            -0.55,
+            -0.32
         ],
         [
-            -0.09,
-            -0.57
+            -0.1,
+            -0.6
         ],
         [
-            0.29,
+            0.27,
             -0.11
         ],
         [
             0.01,
-            -0.19
+            -0.16
         ],
         [
-            0.57,
-            0.17
+            0.56,
+            0.18
         ],
         [
-            -0.68,
-            0.4
+            -0.63,
+            0.37
         ]
     ]
 }
