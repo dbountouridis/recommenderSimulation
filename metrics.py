@@ -33,7 +33,7 @@ def EPC(Rec,RecAsMatrix,M,U_,Rtest):
 		for i,item in enumerate(Rec[u]):
 			sum_+= (1 - np.sum(Ui(item,M))/U_)*disc(i)*Prel(item,u,Rtest)
 		A.append(sum_*Cu)
-	print("EPC:",np.mean(A))
+	#print("EPC:",np.mean(A))
 	return (np.mean(A),np.std(A))
 
 # Expected Free Discovery (EFD)
@@ -49,7 +49,7 @@ def EFD(Rec,RecAsMatrix,M,U_,Rtest):
 			bottom = np.sum(np.sum(M))
 			sum_+= np.log2(top/bottom)*disc(i)*Prel(item,u,Rtest)
 		A.append(sum_*(-Cu))
-	print("EFD:",np.mean(A))
+	#print("EFD:",np.mean(A))
 	return np.mean(A),np.std(A)
 			
 ''' 
@@ -73,7 +73,7 @@ def EPD(Rec,RecAsMatrix,M,U_,Rtest,dist):
 		A.append((Cu/Cu_)*sum_)
 		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
 		#time.sleep(1)
-	print("EPD",np.mean(A))
+	#print("EPD",np.mean(A))
 	return np.mean(A),np.std(A)
 
 # Expected Intra-List Distance (EILD)
@@ -91,7 +91,7 @@ def EILD(Rec,RecAsMatrix,M,U_,Rtest,dist):
 		A.append(sum_)
 		#print(Cu,Cu_,np.where(Iu(u, M)>=1)[0])
 		#time.sleep(1)
-	print("EILD",np.mean(A))
+	#print("EILD",np.mean(A))
 	return np.mean(A), np.std(A)
 
 

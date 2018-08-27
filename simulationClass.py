@@ -131,6 +131,7 @@ def initialProminceZ0(categories, categoriesSalience, Classes,  plot = False):
 
 	return Z
 
+
 class simulation(object):
 	def __init__(self):
 		# Default settings

@@ -36,50 +36,12 @@ def diversityAnalysis(infolder):
 	print(df.describe())
 	df2 = df.loc[df['MML method'] != "Control"]
 
-	for metric in ["EPC","EPD","EFD","ILD","EILD"]:
-		methods = [ g for g, group in df2.groupby("MML method") if g not in ["Random","MostPopular"]]
 
-		if metric == "EPC":
-			grouped = ["SoftMarginRankingMF","UserAttributeKNN","MostPopularByAttributes","BPRMF","ItemAttributeKNN","LeastSquareSLIM","MultiCoreBPRMF"]
-
-		L = []
-		for i,method1 in enumerate(grouped):
-			df1_ = df2.loc[df2['MML method'] == method1]
-			data1 = np.array(df1_[metric])
-			L.append(data1)
-	
-		yp = np.max(np.array(L),axis=0).tolist() + np.min(np.array(L),axis=0).tolist()[::-1]
-		xp = np.arange(np.array(L).shape[1]).tolist() + np.arange(np.array(L).shape[1]).tolist()[::-1]
-		xp = np.array(xp)
-		# print(y,x)
-		# time.sleep(100)
-		# set sns context
-		sns.set_context("notebook", font_scale=1.35, rc={"lines.linewidth": 1.2})
-		sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
-		flatui = sns.color_palette("Dark2", 6)[::-1]
-		sns.set_palette(flatui)
-		[methods.remove(i) for i in grouped] 
-		methods.append("Random")
-		methods.append("MostPopular")
-		fig, ax = plt.subplots(figsize=(9,6))
-		ls = '-'
-		k = 0
-		for g, group in df2.groupby("MML method"):
-			if g not in methods: continue
-			x = np.array(group["Iteration index"])
-			y = np.array(group[metric])
-			yerror = np.array(group[metric+"std"])/2
-			ax.errorbar(x+0.02*k, y, yerr=yerror, linestyle=ls, marker='o', markersize=8, label=g)
-			k+=1
-		ax.set_xticks(np.arange(len(x)) )
-		ax.set_xlabel('Iterations')
-		ax.set_ylabel(metric)
-		ax.set_xlim(xmin=1)
-		ax.fill(xp, yp, "g",alpha=0.3, label = "Group A", joinstyle="round")
-		ax.legend()
-		ax.spines['right'].set_visible(False)
-		ax.spines['top'].set_visible(False)
-		plt.show()
+	sns.set_context("notebook", font_scale=1.35, rc={"lines.linewidth": 1.2})
+	sns.set_style({'font.family': 'serif', 'font.serif': ['Times New Roman']})
+	flatui = sns.color_palette("Dark2", 6)[::-1]
+	sns.set_palette(flatui)
+		
 
 	# plot
 	df2 = df.loc[df['MML method'] != "Control"]
@@ -322,10 +284,10 @@ def main(argv):
 		if opt in ("-f"):
 			infolder = arg
 	
-	#analysis(infolder)
-	#diversityAnalysis2(infolder)
+	analysis(infolder)
+	diversityAnalysis(infolder)
 
-	diversityAnalysis2(infolder,infolder+"-nodrift")
+	#diversityAnalysis2(infolder,infolder+"-nodrift")
 	
 
    
