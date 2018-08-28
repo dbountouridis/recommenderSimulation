@@ -1,2 +1,2 @@
-# recommenderSimulation
-A python implementation of Fleder's and Hosanagar's recommender simulation
+# Rec Sim
+A python implementation a recommender simulation
