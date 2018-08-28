@@ -1,3 +1,26 @@
+""" Simulation of online news consumption including recommendations.
+
+A simulation framework  for the visualization and analysis of the effects of different recommenders systems. 
+This simulation draws mainly on the work of Fleder and Hosanagar (2017). To account for the specificities 
+of news consumption, it includes both users preferences and editorial priming as they interact in a 
+news-webpage context. The simulation models two main components: users (preferences and behavior) 
+and items (article content, publishing habits). Users interact with items and are recommended items
+based on their interaction.
+
+Example:
+	An example 30 sim iterations for 200 users interacting with 100 items per iteration. Five 
+	algorithms are of interest in this case Random,WeightedBPRMF,ItemKNN,MostPopular and UserKNN:
+
+	$ python3 simulation.py -d 5 -u 200 -i 30 -t 100 -s 2 
+	-r "Random,WeightedBPRMF,ItemKNN,MostPopular,UserKNN" 
+	-f "temp" -n 5 -p 0.6 -N 6 -w "0.2,0.2,0.2,0.2,0.2" 
+	-g "0.05,0.07,0.03,0.85,0.01"
+
+Todo:
+	* Add data export function.
+
+"""
+
 from __future__ import division
 import numpy as np
 from scipy import spatial
@@ -24,31 +47,65 @@ import collections
 __author__ = 'Dimitrios  Bountouridis'
 
 def cdf(weights):
-    total = sum(weights)
-    result = []
-    cumsum = 0
-    for w in weights:
-        cumsum += w
-        result.append(cumsum / total)
-    return result
+	""" Cummulative density function.
 
-def choice(population, weights):
-	#random.seed(seed)
-    assert len(population) == len(weights)
-    cdf_vals = cdf(weights)
-    x = random.random()
-    idx = bisect.bisect(cdf_vals, x)
-    return population[idx]
+	Used to convert topic weights into probabilities.
 
-# standardize json output
+	Args:
+		weights (list): An array of floats corresponding to weights 
+
+	"""
+
+	total = sum(weights)
+	result = []
+	cumsum = 0
+	for w in weights:
+		cumsum += w
+		result.append(cumsum / total)
+	return result
+
+def selectClassFromDistribution(population, weights):
+	""" Given a list of classes and corresponding weights randomly select a class.
+
+	Args:
+		population (list): A list of class names e.g. business, politics etc
+		weights (list): Corresponding float weights for each class.
+
+	"""
+
+	assert len(population) == len(weights)
+	cdf_vals = cdf(weights)
+	x = random.random()
+	idx = bisect.bisect(cdf_vals, x)
+	return population[idx]
+
 def standardize(num, precision = 2):
+	""" Convert number to certain precision.
+
+	Args:
+		num (float): Number to be converted
+		precision (int): Precision either 2 or 4 for now
+
+	"""
+
 	if precision == 2:
 		return float("%.2f"%(num))
 	if precision == 4:
 		return float("%.4f"%(num))
 
-# export data to plotly json schema
+
 def plotlyjson(x=[],y=[],type_=[],mode="none",title="",ytitle = "",xtitle = ""):
+	""" Export data to plotly json schema.
+
+	Args: 
+		see plotly https://help.plot.ly/json-chart-schema/
+
+	Returns:
+		param1 (dict): Json schema
+
+
+	"""
+
 	data = {"x":x,
 	"y":y,
 	"type":type_,
@@ -61,13 +118,11 @@ def plotlyjson(x=[],y=[],type_=[],mode="none",title="",ytitle = "",xtitle = ""):
 	}
 	return {"data":data,"layout":layout}
 
-# currently not used
 def printj(text, comments=""):
 	json = {"action":text,"comments":comments}
 	print(json)
 
-
-class users(object):
+class Users(object):
 	""" The class for modeling the user preferences (users) and user behavior.
 
 	The users object can be passed from simulation to simulation, allowing for
@@ -181,7 +236,7 @@ class users(object):
 				W[a,i] = r<W[a,i]	
 		self.Awareness, self.AwarenessOnlyPopular, self.AwarenessProximity =  W, W2, W3
 
-	def ChoiceModule(self, Rec, w, distanceToItems, sessionSize, control = False):
+	def choiceModule(self, Rec, w, distanceToItems, sessionSize, control = False):
 		""" Selecting items to purchase for a single user.
 
 		Args:
@@ -215,7 +270,6 @@ class users(object):
 		# without stochastic
 		selectedW = np.argsort(V[sel])[::-1]
 		return sel[selected[:sessionSize]],sel[selectedW[:sessionSize]]
-
 	
 	def computeNewPositionOfUser(self, user, ChosenItems):
 		""" Compute new position of a user given their purchased item(s).
@@ -248,7 +302,7 @@ class users(object):
 		print(json.dumps(Json, sort_keys=True, indent=4))
 
 
-class items(object):
+class Items(object):
 	""" The class for modeling the items' content (items) and prominence.
 
 	The items object can be passed from simulation to simulation, allowing for
@@ -377,7 +431,6 @@ class items(object):
 		for a in self.activeItemIndeces:
 			self.ItemProminence[a] = self.prominenceFunction(self.ItemsInitialProminence[a],self.ItemLifespan[a])
 		
-	
 	def initialProminceZ0(self):
 		""" Generate initial item prominence based on the topic weights and topic prominence.
 
@@ -397,11 +450,11 @@ class items(object):
 		Z = {}
 		for c in self.topics: Z.update({c:[]})		
 		
-		# assign topic to z prominence without replacement
+		# Assign topic to z prominence without replacement
 		for i in rv.pdf(x):
-			c = choice(population, self.topicsProminence)
+			c = selectClassFromDistribution(population, self.topicsProminence)
 			while counts[c]<=0:
-				c = choice(population, self.topicsProminence)
+				c = selectClassFromDistribution(population, self.topicsProminence)
 			counts[c]-=1
 			Z[c].append(i/0.5)
 
@@ -450,7 +503,7 @@ class items(object):
 		print(json.dumps(Json, sort_keys=True, indent=4))
 
 
-class simulation(object):
+class Simulation(object):
 	""" The simulation class takes users and items and simulates their interaction.
 
 	The simulation can include recommendations (currently using a MyMediaLite wrapper).
@@ -646,7 +699,7 @@ class simulation(object):
 		Json.update({"Items position" : [(standardize(i[0]),standardize(i[1])) for i in self.I.Items]})
 		json.dump(Json, open(self.outfolder + '/'+str(self.algorithm)+'-data.json', 'w'),sort_keys=True, indent=4)
 	
-	def AwarenessModule(self, epoch):
+	def awarenessModule(self, epoch):
 		""" This function computes the awareness of each user.
 
 		While the proximity/prominence awareness is computed in the user class, the current function
@@ -677,7 +730,7 @@ class simulation(object):
 				self.U.Awareness[a,:] = np.zeros(self.I.totalNumberOfItems)
 				self.U.Awareness[a,windex[:self.U.w]] = 1
 		
-	def TemporalAdaptationsModule(self):
+	def temporalAdaptationsModule(self):
 		""" Update the user-items distances and item- lifespand and prominence.
 
 		"""
@@ -698,12 +751,11 @@ class simulation(object):
 
 		"""
 			
-	
 		for epoch_index, epoch in enumerate(iterationRange):
 
 			SalesHistoryBefore = self.SalesHistory.copy()
 				
-			self.AwarenessModule(epoch)
+			self.awarenessModule(epoch)
 			InitialAwareness = self.U.Awareness.copy()
 		
 			# Recommendation module 
@@ -736,7 +788,7 @@ class simulation(object):
 						continue
 					Rec = recommendations[user]
 				
-				indecesOfChosenItems,indecesOfChosenItemsW =  self.U.ChoiceModule(Rec, 
+				indecesOfChosenItems,indecesOfChosenItemsW =  self.U.choiceModule(Rec, 
 					self.U.Awareness[user,:], 
 					self.D[user,:], 
 					self.U.sessionSize(), 
@@ -769,7 +821,7 @@ class simulation(object):
 
 			# Temporal adaptations
 			printj(self.algorithm+": Temporal adaptations...")	
-			self.TemporalAdaptationsModule()
+			self.temporalAdaptationsModule()
 
 			# Compute diversity metrics		
 			if self.algorithm is not "Control":
@@ -843,9 +895,16 @@ class simulation(object):
 			rec = [int(i.split(":")[0]) for i in l1]
 			recommendations.update({user_id:rec})
 		return recommendations 
-	
-	# plotting	    
+		    
 	def plot2D(self, drift = False, output = "initial-users-products.pdf", storeOnly = True):
+		""" Plotting the users-items on the attribute space.
+
+		Args:
+			drift (bool): Whether the user drift should be plotted (it is time consuming)
+			output (str): The output pdf file
+			storeOnly (bool): Whether the plot should be shown
+
+		"""
 
 		sns.set_context("notebook", font_scale=1.6, rc={"lines.linewidth": 1.0,'xtick.labelsize': 32, 'axes.labelsize': 32})
 		sns.set(style="whitegrid")
@@ -853,11 +912,10 @@ class simulation(object):
 		flatui = sns.color_palette("husl", 8)
 		f, ax = matplotlib.pyplot.subplots(1,1, figsize=(6,6), sharey=True)
 
-		# products
 		cmaps= ['Blues','Reds','Greens','Oranges','Greys']
 		colors = [sns.color_palette(cmaps[i])[-2] for i in range(len(self.I.topics))]
 		
-		# if no sales history yet, display items with prominence as 3rd dimension
+		# If no sales history yet, display items with prominence as 3rd dimension
 		if np.sum(np.sum(self.SalesHistory))==0:
 			n = np.sum(self.SalesHistory,axis=0)
 			for i in range(self.I.totalNumberOfItems): 
@@ -875,7 +933,7 @@ class simulation(object):
 						for k in range(int(n[i])): x.append([self.I.Items[i,0],self.I.Items[i,1]])
 				ax = sns.kdeplot(np.array(x)[:,0], np.array(x)[:,1], shade=True, shade_lowest=False, alpha = 0.4, cmap=cmaps[cat],kernel='gau')
 			
-			# scatter
+			# Scatter
 			for i in range(self.I.totalNumberOfItems): 
 				color = colors[self.I.ItemsClass[i]]
 				if n[i]>=1:
@@ -890,11 +948,11 @@ class simulation(object):
 					marker = 'x'
 				ax.scatter(self.I.Items[i,0], self.I.Items[i,1], marker=marker, c=color,s=s,alpha=v)	
 		
-		# final user position as a circle
+		# Final user position as a circle
 		for i in range(len(self.U.Users[:,1])):
 			ax.scatter(self.U.Users[i,0], self.U.Users[i,1], marker='+', c='k',s=20, alpha = 0.8 )
 		
-		# user drift
+		# User drift
 		if drift:
 			for i in range(len(self.U.Users[:,1])):
 				for j in range(len(self.U.X[i])-1):
@@ -914,6 +972,10 @@ class simulation(object):
 		if not storeOnly: matplotlib.pyplot.show()
  
 	def showSettings(self):
+		""" A simple function to print most of the attributes of the class.
+
+		"""
+
 		variables = [key for key in self.__dict__.keys() if (type(self.__dict__[key]) is str or type(self.__dict__[key]) is float or type(self.__dict__[key]) is int or type(self.__dict__[key]) is list and len(self.__dict__[key])<10)]
 		old = self.__dict__
 		Json={ key: old[key] for key in variables }
@@ -962,16 +1024,16 @@ def main(argv):
 			topicprominence = np.array([float(i) for i in tp])
 
 	printj("Initialize simulation class...")
-	sim = simulation()
+	sim = Simulation()
 	sim.outfolder = outfolder
 	sim.totalNumberOfIterations = iterationsPerRecommender*2 # one for the control and one for each rec
 	sim.seed = seed
 	sim.n = numberOfRecommendations
 
 	printj("Initialize users/items classes...")
-	U = users()
-	I = items()
-	# user/items input arguments
+	U = Users()
+	I = Items()
+
 	U.delta, U.totalNumberOfUsers, I.numberOfNewItemsPI = delta, totalNumberOfUsers, newItemsPerIteration
 	U.seed = seed
 	U.Lambda = focusOnProminentItems
@@ -979,6 +1041,7 @@ def main(argv):
 	I.seed = seed
 	I.topicsFrequency = topicweights
 	I.topicsSalience = topicprominence
+	
 	I.generatePopulation(sim.totalNumberOfIterations)
 	U.generatePopulation()
 	
@@ -1009,8 +1072,8 @@ def main(argv):
 		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
 		#printj("Saving for "+rec+"...", comments = "Output pickle file is stored in your workspace.")
 		#pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
-		printj("Plotting for "+rec+"...")
-		sim2.plot2D(drift = True, output = "2d-"+sim2.algorithm+".pdf")
+		#printj("Plotting for "+rec+"...")
+		#sim2.plot2D(drift = True, output = "2d-"+sim2.algorithm+".pdf")
       
 if __name__ == "__main__":
    main(sys.argv[1:])           
