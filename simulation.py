@@ -93,7 +93,6 @@ def standardize(num, precision = 2):
 	if precision == 4:
 		return float("%.4f"%(num))
 
-
 def plotlyjson(x=[],y=[],type_=[],mode="none",title="",ytitle = "",xtitle = ""):
 	""" Export data to plotly json schema.
 
@@ -142,10 +141,10 @@ class Users(object):
 
 		self.seed = 1
 
-		self.totalNumberOfUsers = 150  # Total number of users                    
+		self.totalNumberOfUsers = 200  # Total number of users                    
 		self.percentageOfActiveUsersPI = 1.0 # Percentage of active users per iterations
  
-		self.m = 0.05  # Amount of distance covered when a user drifts towards an item
+		self.m = 0.05  # Percentage of the distance_ij covered when a user_i drifts towards an item_j
 
 		# Choice attributes
 		self.k = 20                          
@@ -156,13 +155,13 @@ class Users(object):
 		# Awareness attributes
 		self.theta = 0.07  # Proximity decay
 		self.thetaDot = 0.5  # Prominence decay
-		self.Lambda = 0.6 
+		self.Lambda = 0.6  # Awareness balance between items in proximity and prominent items
 		self.w = 40  # Maximum awareness pool size 
-		self.Awareness = False # User-item awareness matrix
+		self.Awareness = [] # User-item awareness matrix
 
-		self.Users = False  # User preferences, (x,y) position of users on the attribute space
-		self.UsersClass = False
-		self.userVarietySeeking = False
+		self.Users = []  # User preferences, (x,y) position of users on the attribute space
+		self.UsersClass = []  # Users be assigned a class (center at attribute space)
+		self.userVarietySeeking = []  # Users' willingness to drift
 		self.X = False  # Tracking the X,Y position of users throught the simulation
 		self.Y = False
 
@@ -300,7 +299,6 @@ class Users(object):
 
 		Json={ key: self.__dict__[key] for key,tp in variables }
 		print(json.dumps(Json, sort_keys=True, indent=4))
-
 
 class Items(object):
 	""" The class for modeling the items' content (items) and prominence.
@@ -502,7 +500,6 @@ class Items(object):
 		Json={ key: old[key] for key in variables }
 		print(json.dumps(Json, sort_keys=True, indent=4))
 
-
 class Simulation(object):
 	""" The simulation class takes users and items and simulates their interaction.
 
@@ -526,6 +523,9 @@ class Simulation(object):
 
 	def createSimulationInstance(self):
 		""" Create an instance of the simulation by computing users to items distances.
+
+		Todo:
+			* Updating the item-distance only for items that matter
 
 		"""
 
@@ -732,6 +732,9 @@ class Simulation(object):
 		
 	def temporalAdaptationsModule(self):
 		""" Update the user-items distances and item- lifespand and prominence.
+
+		Todo:
+			* Updating the item-distance only for items that matter
 
 		"""
 		
@@ -981,9 +984,8 @@ class Simulation(object):
 		Json={ key: old[key] for key in variables }
 		print(json.dumps(Json, sort_keys=True, indent=4))
 
-
 def main(argv):
-	helpText = 'simulationClass.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder> -n <numberOfRecommendations> -p <focusonprominence> -N <meanSessionSize> -w <topicweights> -g <topicprominence>'
+	helpText = 'simulation.py  -i <iterationsPerRecommender> -s <seed> -u <totalusers> -d <deltasalience> -r <recommenders> -t <newItemsPerIteration> -f <outfolder> -n <numberOfRecommendations> -p <focusonprominence> -N <meanSessionSize> -w <topicweights> -g <topicprominence>'
 	try:
 		opts, args = getopt.getopt(argv,"hi:s:u:d:r:t:f:n:p:N:w:g:")
 	except getopt.GetoptError:
@@ -1026,21 +1028,29 @@ def main(argv):
 	printj("Initialize simulation class...")
 	sim = Simulation()
 	sim.outfolder = outfolder
-	sim.totalNumberOfIterations = iterationsPerRecommender*2 # one for the control and one for each rec
 	sim.seed = seed
 	sim.n = numberOfRecommendations
-
+	
+	# The totalNumberOfIterations controls the amount of
+	# items that will be generated. We first need to run a Control period for
+	# iterarionsPerRecommender iterations, on different items than during the 
+	# recommendation period, as such the total amount of iterations is doubled.
+	sim.totalNumberOfIterations = iterationsPerRecommender*2 
+	
 	printj("Initialize users/items classes...")
 	U = Users()
 	I = Items()
 
-	U.delta, U.totalNumberOfUsers, I.numberOfNewItemsPI = delta, totalNumberOfUsers, newItemsPerIteration
+	U.delta = delta
+	U.totalNumberOfUsers = totalNumberOfUsers
 	U.seed = seed
 	U.Lambda = focusOnProminentItems
 	U.meanSessionSize = meanSessionSize
+	
 	I.seed = seed
 	I.topicsFrequency = topicweights
 	I.topicsSalience = topicprominence
+	I.numberOfNewItemsPI = newItemsPerIteration
 	
 	I.generatePopulation(sim.totalNumberOfIterations)
 	U.generatePopulation()
