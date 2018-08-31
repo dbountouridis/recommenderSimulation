@@ -121,6 +121,17 @@ def printj(text, comments=""):
 	json = {"action":text,"comments":comments}
 	print(json)
 
+def euclideanDistance(A,B):
+	""" Compute the pairwise distance between arrays of (x,y) points.
+
+	We use a numpy version which is C++ based for the sake of efficiency.
+	
+	"""
+	
+	#spatial.distance.cdist(A, B, metric = 'euclidean')
+	return np.sqrt(np.sum((np.array(A)[None, :] - np.array(B)[:, None])**2, -1)).T
+
+
 class Users(object):
 	""" The class for modeling the user preferences (users) and user behavior.
 
@@ -176,7 +187,7 @@ class Users(object):
 		# Position on the attribute space. Uniform, bounded by 1-radius circle
 		self.Users = np.random.uniform(-1,1,(self.totalNumberOfUsers,2))
 		for i, user in enumerate(self.Users):
-			while spatial.distance.cdist([user], [[0,0]], metric = 'euclidean')[0][0]>1.1:
+			while euclideanDistance([user], [[0,0]])[0][0]>1.1:
 				user = np.random.uniform(-1,1,(1,2))[0]
 			self.Users[i] = user
 	
@@ -212,7 +223,7 @@ class Users(object):
 		self.activeUserIndeces = self.activeUserIndeces[:int(len(self.activeUserIndeces)*self.percentageOfActiveUsersPI)] 
 		self.nonActiveUserIndeces = [ i  for i in np.arange(self.totalNumberOfUsers) if i not in self.activeUserIndeces]
 
-	def computeAwarenessMatrix(self, Dij, ItemProminence):
+	def computeAwarenessMatrix(self, Dij, ItemProminence, activeItemIndeces):
 		""" Compute awareness from proximity and prominence (not considering availability, recommendations, history).
 
 		Args:
@@ -226,13 +237,12 @@ class Users(object):
 		W = np.zeros([self.totalNumberOfUsers,totalNumberOfItems])
 		W2 = W.copy() # for analysis purposes
 		W3 = W.copy() # for analysis purposes
-		for a in range(self.totalNumberOfUsers):
-			for i in range(totalNumberOfItems):
-				W[a,i] = self.Lambda*(-self.thetaDot*np.log(1-ItemProminence[i])) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				W2[a,i] = self.Lambda*(-self.thetaDot*np.log(1-ItemProminence[i])) 
-				W3[a,i] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,i],2))/self.theta)
-				r = random.random()
-				W[a,i] = r<W[a,i]	
+		for a in self.activeUserIndeces:
+			W[a,activeItemIndeces] = self.Lambda*(-self.thetaDot*np.log(1-ItemProminence[activeItemIndeces])) + (1-self.Lambda)*np.exp(-(np.power(Dij[a,activeItemIndeces],2))/self.theta)
+			W2[a,activeItemIndeces] = self.Lambda*(-self.thetaDot*np.log(1-ItemProminence[activeItemIndeces])) 
+			W3[a,activeItemIndeces] = (1-self.Lambda)*np.exp(-(np.power(Dij[a,activeItemIndeces],2))/self.theta)
+		R = np.random.rand(W.shape[0],W.shape[1])
+		W = R<W
 		self.Awareness, self.AwarenessOnlyPopular, self.AwarenessProximity =  W, W2, W3
 
 	def choiceModule(self, Rec, w, distanceToItems, sessionSize, control = False):
@@ -280,7 +290,7 @@ class Users(object):
 		"""
 
 		for itemPosition in ChosenItems:
-			dist = spatial.distance.cdist([self.Users[user]], [itemPosition],metric = 'euclidean')[0]
+			dist =  euclideanDistance([self.Users[user]], [itemPosition])[0]
 			p = np.exp(-(np.power(dist,2))/(self.userVarietySeeking[user])) # based on the awareness formula
 			B = np.array(self.Users[user])
 			P = np.array(itemPosition)
@@ -505,7 +515,7 @@ class Simulation(object):
 
 	The simulation can include recommendations (currently using a MyMediaLite wrapper).
 	Alternative toolboxes can be used. The simulation class also stores results for 
-	analysis and computes diversity metrics (based on Vargas).
+	analysis and computes diversity metrics (based on the PhD thesis of Vargas).
 
 	"""
 
@@ -515,11 +525,15 @@ class Simulation(object):
 		self.algorithm = "Control"	# The current recommendation algorithm
 		self.AnaylysisInteractionData = []  # Holder for results/data
 
+		self.D = []  # Distance matrix |Users|x|Items| between items and users
+		self.SalesHistory = []  # User-item interaction matrix |Users|x|Items|7......7
+
 		self.diversityMetrics = {}  # Holder for diversity metrics (means + std)
 		for key in ["EPC", "EPCstd",'ILD',"Gini", "EFD", "EPD", "EILD", 'ILDstd', "EFDstd", "EPDstd", "EILDstd"]:
 			self.diversityMetrics.update({key:[]})
 
 		self.outfolder = ""
+
 
 	def createSimulationInstance(self):
 		""" Create an instance of the simulation by computing users to items distances.
@@ -530,7 +544,7 @@ class Simulation(object):
 		"""
 
 		
-		self.D = spatial.distance.cdist(self.U.Users, self.I.Items, metric = 'euclidean')
+		self.D =  euclideanDistance(self.U.Users, self.I.Items)
 		self.SalesHistory = np.zeros([self.U.totalNumberOfUsers,self.I.totalNumberOfItems]) 						
 	
 	def exportAnalysisDataAfterIteration(self):
@@ -561,23 +575,6 @@ class Simulation(object):
 		df["Iteration index"] = np.array([i for i in range(len(self.diversityMetrics["EPC"])) ])
 		df["MML method"] = np.array([self.algorithm for i in  range(len(self.diversityMetrics["EPC"]))])
 		df.to_pickle(self.outfolder + "/metrics analysis-"+self.algorithm+".pkl")
-
-	def setAlgorithm(self, engine):
-		""" If a new recommendation algorithm is set, then delete the data points so far.
-
-		Args:
-			engine (str): The name of the recommendation algorithm
-
-		"""
-
-		# We store the purchase history from the control period to compute the Gini coefficient
-		if self.algorithm == "Control" and engine!=self.algorithm:
-			self.ControlHistory = self.SalesHistory.copy()
-		self.algorithm = engine
-		self.AnaylysisInteractionData=[]
-		self.diversityMetrics = {}  # Holder for diversity metrics (means + std)
-		for key in ["EPC", "EPCstd",'ILD',"Gini", "EFD", "EPD", "EILD", 'ILDstd', "EFDstd", "EPDstd", "EILDstd"]:
-			self.diversityMetrics.update({key:[]})
 
 	def exportJsonForOnlineInterface(self, epoch, epoch_index, iterationRange, SalesHistoryBefore):
 		""" Export some data in json for the SIREN online interface and for terminal inspection.
@@ -713,7 +710,7 @@ class Simulation(object):
 
 		self.U.subsetOfAvailableUsers()
 		self.I.subsetOfAvailableItems(epoch)
-		self.U.computeAwarenessMatrix(self.D, self.I.ItemProminence)
+		self.U.computeAwarenessMatrix(self.D, self.I.ItemProminence, self.I.activeItemIndeces)
 		
 		# Adjust for availability 
 		self.U.Awareness[:,self.I.nonActiveItemIndeces] = 0 
@@ -728,20 +725,27 @@ class Simulation(object):
 				windex = w.tolist()
 				random.shuffle(windex)
 				self.U.Awareness[a,:] = np.zeros(self.I.totalNumberOfItems)
-				self.U.Awareness[a,windex[:self.U.w]] = 1
+				self.U.Awareness[a,windex[:self.U.w]] = 1	
 		
-	def temporalAdaptationsModule(self):
+	def temporalAdaptationsModule(self, epoch):
 		""" Update the user-items distances and item- lifespand and prominence.
 
 		Todo:
 			* Updating the item-distance only for items that matter
 
-		"""
-		
-		if self.algorithm is not "Control":
-			self.D = spatial.distance.cdist(self.U.Users, self.I.Items, metric = 'euclidean')	
-
+		"""	
+	
 		self.I.updateLifespanAndProminence()
+
+		# We compute this here so that we update the distances between users and not all the items
+		self.I.subsetOfAvailableItems(epoch+1)
+	
+
+		if self.algorithm is not "Control":
+			D =  euclideanDistance(self.U.Users, self.I.Items[self.I.activeItemIndeces])
+			# If you use only a percentage of users then adjust this function
+			for u in range(self.U.totalNumberOfUsers): self.D[u,self.I.activeItemIndeces] = D[u,:]
+		
 
 	def runSimulation(self, iterationRange =[]):
 		""" The main simulation function.
@@ -757,31 +761,35 @@ class Simulation(object):
 		for epoch_index, epoch in enumerate(iterationRange):
 
 			SalesHistoryBefore = self.SalesHistory.copy()
-				
+
+			printj(self.algorithm+": Awareness...")				
 			self.awarenessModule(epoch)
 			InitialAwareness = self.U.Awareness.copy()
-		
+
 			# Recommendation module 
 			if self.algorithm is not "Control":
+				printj(self.algorithm+": Recommendations...")
+
 				self.exportToMMLdocuments()
 				recommendations = self.mmlRecommendation()
 	
-			# Add recommendations to each user's awareness pool			
-			for user in self.U.activeUserIndeces:
-				Rec=np.array([-1])
-				
-				if self.algorithm is not "Control":
-					if user not in recommendations.keys():
-						printj(" -- Nothing to recommend -- to user ",user)
-						continue
-					Rec = recommendations[user]
-					self.I.hasBeenRecommended[Rec] = 1
-					self.U.Awareness[user, Rec] = 1  	
+				# Add recommendations to each user's awareness pool			
+				for user in self.U.activeUserIndeces:
+					Rec=np.array([-1])
+					
+					if self.algorithm is not "Control":
+						if user not in recommendations.keys():
+							printj(" -- Nothing to recommend -- to user ",user)
+							continue
+						Rec = recommendations[user]
+						self.I.hasBeenRecommended[Rec] = 1
+						self.U.Awareness[user, Rec] = 1
 
-					# Decrease awareness of the previous purchase
-					self.U.Awareness[user, np.where(self.SalesHistory[user,Rec]>0)[0] ] = 0		
+						# If recommended but previously purchased, minimize the awareness
+						self.U.Awareness[user, np.where(self.SalesHistory[user,Rec]>0)[0] ] = 0  	
 
 			# Choice 
+			printj(self.algorithm+": Choice...")
 			for user in self.U.activeUserIndeces:
 				Rec=np.array([-1])
 				
@@ -824,10 +832,12 @@ class Simulation(object):
 
 			# Temporal adaptations
 			printj(self.algorithm+": Temporal adaptations...")	
-			self.temporalAdaptationsModule()
+			self.temporalAdaptationsModule(epoch)
 
 			# Compute diversity metrics		
 			if self.algorithm is not "Control":
+				printj(self.algorithm+": Diversity metrics...")
+				
 				met = metrics.metrics(SalesHistoryBefore, recommendations, self.I.ItemsFeatures, self.I.ItemsDistances, self.SalesHistory)
 				met.update({"Gini": metrics.computeGinis(self.SalesHistory,self.ControlHistory)})
 				for key in met.keys():
@@ -1064,7 +1074,7 @@ def main(argv):
 	# sim.plot2D(storeOnly = True)
 
 	printj("Running Control period...", comments = "We first run a Control period without recommenders to deal with the cold start problem.")
-	sim.setAlgorithm("Control")
+	sim.algorithm = "Control"
 	sim.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender)])
 	sim.showSettings()
 	sim.U.showSettings()
@@ -1072,14 +1082,28 @@ def main(argv):
 
 	#printj("Saving...", comments = "Output pickle file is stored in your workspace.")
 	#pickle.dump(sim.Data, open(sim.outfolder + '/Control-data.pkl', 'wb'))
-	printj("Plotting...")
-	sim.plot2D(drift = True, output = "2d-Control.pdf")
+	#printj("Plotting...")
+	#sim.plot2D(drift = True, output = "2d-Control.pdf")
 	
 	printj("Running Recommenders....", comments = "The recommenders continue from the Control period.")
 	for rec in recommenders:
-		sim2 = copy.deepcopy(sim) 	# continue from the control period
-		sim2.setAlgorithm(rec)
-		sim2.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
+
+		# Set the same settings as the control period
+		simR = Simulation()
+		simR.outfolder = outfolder
+		simR.seed = seed
+		simR.n = numberOfRecommendations
+		simR.totalNumberOfIterations = iterationsPerRecommender*2
+		simR.algorithm =  rec
+		
+		# Copy the users, items and their interactions from the control period
+		simR.U = copy.deepcopy(sim.U)
+		simR.I = copy.deepcopy(sim.I)
+		simR.D = sim.D.copy()  # Start from the control distances between items and users
+		simR.SalesHistory = sim.SalesHistory.copy()  # Start from the control sale history
+		simR.ControlHistory = sim.SalesHistory.copy()  # We use a copy of the control sales history for the Gini coeff metric
+		simR.runSimulation(iterationRange = [i for i in range(iterationsPerRecommender,iterationsPerRecommender*2)])
+		
 		#printj("Saving for "+rec+"...", comments = "Output pickle file is stored in your workspace.")
 		#pickle.dump(sim2.Data, open(sim2.outfolder + '/'+rec+'-data.pkl', 'wb'))
 		#printj("Plotting for "+rec+"...")

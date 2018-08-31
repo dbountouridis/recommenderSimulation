@@ -162,18 +162,18 @@ def metrics(M,Rec,ItemFeatures,dist,Mafter):
 	for u in Rec.keys():
 		RecAsMatrix[u,Rec[u]]=1
 	(mEPC,sEPC) = EPC(Rec,RecAsMatrix,M,U_,Rtest)
-	(mILD,sILD) = ILD(Rec,RecAsMatrix,M,U_,dist)
-	(mEFD,sEFD) = EFD(Rec,RecAsMatrix,M,U_,Rtest)
+	#(mILD,sILD) = ILD(Rec,RecAsMatrix,M,U_,dist)
+	#(mEFD,sEFD) = EFD(Rec,RecAsMatrix,M,U_,Rtest)
 	(mEPD,sEPD) = EPD(Rec,RecAsMatrix,M,U_,Rtest,dist)
-	(mEILD,sEILD) = EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)
+	#(mEILD,sEILD) = EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)
 	return {"EPC" :  mEPC,
 	"EPCstd" :  sEPC,
-	"ILD": mILD,
-	"ILDstd": sILD,
-	"EFD": mEFD,
-	"EFDstd": sEFD,  
+	"ILD": 0,
+	"ILDstd": 0,
+	"EFD": 0,
+	"EFDstd": 0,  
 	"EPD": mEPD,
 	"EPDstd": mEPD,
-	"EILD": mEILD,
-	"EILDstd": sEILD}
+	"EILD": 0,
+	"EILDstd": 0}
 	
