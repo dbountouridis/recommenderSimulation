@@ -695,6 +695,33 @@ class Simulation(object):
 		Json.update({"Users position" : [(standardize(i[0]),standardize(i[1])) for i in self.U.Users]})
 		Json.update({"Items position" : [(standardize(i[0]),standardize(i[1])) for i in self.I.Items]})
 		json.dump(Json, open(self.outfolder + '/'+str(self.algorithm)+'-data.json', 'w'),sort_keys=True, indent=4)
+		self.exportMap()
+
+	def exportMap(self):
+		trace1 = {}
+		trace1.update({"x" : [standardize(i[0]) for i in self.U.Users]})
+		trace1.update({"y" : [standardize(i[1]) for i in self.U.Users]})
+		trace1.update({"text" : [standardize(i) for i in range(self.U.totalNumberOfUsers)]})
+		trace1.update({"name":"Users"})
+		trace1.update({"mode": 'markers',"type": 'scatter'})
+		trace1.update({"marker": { "size": 12, "color": "#444"}})
+		json.dump({"users":trace1}, open(self.outfolder + '/'+str(self.algorithm)+'-trace-users.json', 'w'),sort_keys=True, indent=4)
+
+		c = ["210,82,44","22,124,165","205,44,59","92,92,92","25,136,186"]
+		c2 = ["politics","entertainment","business","tech","sport"]
+		for index, t in enumerate(self.I.topics):
+			indeces = set(np.where(self.I.ItemsClass==index)[0])
+			indeces = np.array(list(indeces.intersection(self.I.activeItemIndeces)))
+			items = self.I.Items[indeces]
+			trace2 = {}
+			trace2.update({"x" : [standardize(i[0]) for i in items]})
+			trace2.update({"y" : [standardize(i[1]) for i in items]})
+			trace2.update({"text" : [str(i) for i in indeces]})
+			trace2.update({"name": t})
+			trace2.update({"marker": { "size": [standardize(3+self.I.ItemProminence[i]*12) for i in indeces ], "color": "rgba("+c[index]+",1)" }})
+			trace2.update({"mode": 'markers',"type": 'scatter'})
+		
+			json.dump(trace2, open(self.outfolder + '/'+str(self.algorithm)+'-trace-'+t+'.json', 'w'),sort_keys=True, indent=4)
 	
 	def awarenessModule(self, epoch):
 		""" This function computes the awareness of each user.
