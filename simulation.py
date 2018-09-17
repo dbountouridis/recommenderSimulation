@@ -866,14 +866,16 @@ class Simulation(object):
 				printj(self.algorithm+": Diversity metrics...")
 				
 				met = metrics.metrics(SalesHistoryBefore, recommendations, self.I.ItemsFeatures, self.I.ItemsDistances, self.SalesHistory)
-				met.update({"Gini": metrics.computeGinis(self.SalesHistory,self.ControlHistory)})
+				#met.update({"Gini": metrics.computeGinis(self.SalesHistory,self.ControlHistory)})
 				for key in met.keys():
 					self.diversityMetrics[key].append(met[key])
 
 			# Show stats on screen and save json for interface
+			printj(self.algorithm+": Exporting...")
 			self.exportJsonForOnlineInterface(epoch, epoch_index, iterationRange, SalesHistoryBefore)
 
 		# Save results
+		printj(self.algorithm+": Exporting iteration data...")
 		self.exportAnalysisDataAfterIteration()
 		
 	def exportToMMLdocuments(self):

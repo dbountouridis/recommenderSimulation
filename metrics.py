@@ -161,10 +161,16 @@ def metrics(M,Rec,ItemFeatures,dist,Mafter):
 	RecAsMatrix = np.zeros((U_, I_))
 	for u in Rec.keys():
 		RecAsMatrix[u,Rec[u]]=1
+	s = time.time()
 	(mEPC,sEPC) = EPC(Rec,RecAsMatrix,M,U_,Rtest)
+	e = time.time()
+	print("time:",e-s)
 	#(mILD,sILD) = ILD(Rec,RecAsMatrix,M,U_,dist)
 	#(mEFD,sEFD) = EFD(Rec,RecAsMatrix,M,U_,Rtest)
+	s = time.time()
 	(mEPD,sEPD) = EPD(Rec,RecAsMatrix,M,U_,Rtest,dist)
+	e = time.time()
+	print("time:",e-s)
 	#(mEILD,sEILD) = EILD(Rec,RecAsMatrix,M,U_,Rtest,dist)
 	return {"EPC" :  mEPC,
 	"EPCstd" :  sEPC,
