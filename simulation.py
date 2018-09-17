@@ -698,6 +698,13 @@ class Simulation(object):
 		self.exportMap()
 
 	def exportMap(self):
+		""" This function exports the users positions and items' features on the 2d topic space at each iteration. The aim is for a web-based application to visualize the results using plotly.js in real time.
+
+		Todo:
+			* This is still work in progress
+
+		"""
+
 		trace1 = {}
 		trace1.update({"x" : [standardize(i[0]) for i in self.U.Users]})
 		trace1.update({"y" : [standardize(i[1]) for i in self.U.Users]})
